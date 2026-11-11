@@ -180,6 +180,10 @@ class InterfacePopups
     int8_t selectedActualItem = 0;
     char** ptrActualItemsList = nullptr;
 
+    // Maps Instr popup list rows -> global instrument indices (variable: active racks only).
+    uint8_t instrumentListMap[kTotalInstrumentsCount]{};
+    int instrumentListLength = 0;
+
     enumStepPopups stepPopupState = stepPopupNone;
     bool noteKeyboardPopupActive = false;
     int miniKeyboardFirstPadIdx = 12 * 3;

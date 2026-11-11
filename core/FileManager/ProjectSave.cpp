@@ -1,5 +1,6 @@
 #include "ProjectSave.h"
 
+#include "DrumRack.h"
 #include "VoiceStreamManager.h"
 #include "fileManager.h"
 #include "fileManagerDefs.h"
@@ -53,6 +54,8 @@ void ProjectSave::update()
                 copyStep = 0;
                 if (currentInstrument >= kSampleInstrumentsCount)
                 {
+                    for (uint8_t rack = 0; rack < kDrumRackInstrumentsCount; rack++)
+                        copyDrumRackSidecar(rack);
                     nextStep = ProjectSaveStep::finishStep;
                 }
                 instrumentsSizeCopied += fileTransfer.getBytesComplited();
@@ -617,6 +620,32 @@ bool ProjectSave::saveProject(char* projectPathToSave, char* projectNameToSave)
     newFileManager.setStatus(fmSavingProjectToProjects);
     newFileManager.setCurrentOperation(fmCopyWorkspaceToProjects);
     return true;
+}
+
+void ProjectSave::copyDrumRackSidecar(int idx)
+{
+    char srcRackPath[PATCH_SIZE];
+    char destRackPath[PATCH_SIZE];
+
+    snprintf(srcRackPath, sizeof(srcRackPath), cWorkspaceDrumRackFileFormat, idx + 1);
+    snprintf(destRackPath,
+             sizeof(destRackPath),
+             cProjectsDrumRackFileFormat,
+             newFileManager.getCurrentProjectPath(),
+             newFileManager.getCurrentProjectName(),
+             idx + 1);
+
+    if (idx < 0 || idx >= kDrumRackInstrumentsCount ||
+        !mtProject.drumRackInstrument[idx].isActive || !fileSystem->exists(srcRackPath))
+    {
+        if (fileSystem->exists(destRackPath))
+            fileSystem->remove(destRackPath);
+        return;
+    }
+
+    // Ensure workspace sidecar is current before copying into the project.
+    DrumRack::saveSidecar((uint8_t)idx, fileSystem);
+    fileTransfer.copyFile(srcRackPath, destRackPath);
 }
 
 //=================================================================================================

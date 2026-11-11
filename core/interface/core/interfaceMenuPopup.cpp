@@ -222,6 +222,15 @@ void InterfaceMenuPopup::hideModulePopup(ModuleBase* modulePtr)
 
     uint8_t moduleToSwitch = modules[menuFunctions[selectedBox]].button;
     uint32_t startOptions = modules[menuFunctions[selectedBox]].defaultOption;
+    const uint8_t moduleIdx = menuFunctions[selectedBox];
+    InterfaceMenuPopup::ModuleModes* modes = resolveModuleModes(moduleIdx);
+    if (modes != nullptr && modes->count > 0)
+    {
+        uint8_t modeIdx = modes->modes.current;
+        if (modeIdx >= modes->count)
+            modeIdx = 0;
+        startOptions = modes->options[modeIdx];
+    }
 
     if (modules[selectedModuleOnShow].button != modules[menuFunctions[selectedBox]].button)
     {
@@ -244,7 +253,7 @@ void InterfaceMenuPopup::hideModulePopup(ModuleBase* modulePtr)
         }
         else
         {
-            modulePtr->start(modules[menuFunctions[selectedBox]].defaultOption);
+            modulePtr->start(startOptions);
         }
     }
 }

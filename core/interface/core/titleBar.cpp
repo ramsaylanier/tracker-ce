@@ -1,6 +1,7 @@
 #include "titleBar.h"
 #include "core/interfaceDefs.h"
 #include "display.h"
+#include "mtSequencer.h"
 
 #if GUI_HANDLE_SYNTH
 #include "Profiler.h"
@@ -140,7 +141,14 @@ void TitleBar::showCurrentInstrumentOnRightLabel()
 
     uint8_t idx = mtProject.values.lastUsedInstrument;
 
-    if (idx >= SYNTH_INSTRUMENTS_START_IDX)
+    if (isDrumRackInstrument(idx))
+    {
+        const strDrumRackInstrument& rack =
+          mtProject.drumRackInstrument[drumRackInstrumentToIdx(idx)];
+        snprintf(actualInstrName, SAMPLE_NAME_SIZE, "%s", rack.name);
+        actualInstrName[SAMPLE_NAME_SIZE] = 0;
+    }
+    else if (idx >= SYNTH_INSTRUMENTS_START_IDX && idx < DRUM_RACK_INSTRUMENTS_START_IDX)
     {
 #if GUI_HANDLE_SYNTH
         assert(synth);
@@ -151,7 +159,7 @@ void TitleBar::showCurrentInstrumentOnRightLabel()
         actualInstrName[SAMPLE_NAME_SIZE] = 0;
 #endif
     }
-    else if (idx >= MIDI_INSTRUMENTS_START_IDX)
+    else if (isMidiInstrument(idx))
     {
         snprintf(actualInstrName,
                  SAMPLE_NAME_SIZE,

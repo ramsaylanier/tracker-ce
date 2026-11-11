@@ -1,4 +1,5 @@
 #include "mtAudioEngine.h"
+#include "DrumRack.h"
 #include "Platform.h"
 #include "VoiceStreamManager.h"
 #ifdef FEATURE_SYNTH
@@ -168,6 +169,16 @@ audioEngine::audioEngine()
     prePolyverbMixer = mixerAndFxs.getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb);
     preDelayMixer = mixerAndFxs.getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay);
 
+    connections.push_back(new AudioConnection(&DrumRack::sendBus(),
+                                              0,
+                                              preDelayMixer,
+                                              MixerAndFxs<kVoices>::kDrumKitSendMixerChannel));
+    connections.push_back(new AudioConnection(&DrumRack::sendBus(),
+                                              1,
+                                              prePolyverbMixer,
+                                              MixerAndFxs<kVoices>::kDrumKitSendMixerChannel));
+    preDelayMixer->gain(MixerAndFxs<kVoices>::kDrumKitSendMixerChannel, 1.0f);
+    prePolyverbMixer->gain(MixerAndFxs<kVoices>::kDrumKitSendMixerChannel, 1.0f);
 }
 
 void audioEngine::init(Platform* platform, [[maybe_unused]] Synth* synth)
@@ -352,6 +363,7 @@ void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* m
                           0,
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
                           idx));
+    connections.push_back(new AudioConnection(voice->getFilter(), 0, &DrumRack::sendBus(), idx));
 }
 #else
 void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* mixerAndFxs, int idx)
@@ -389,6 +401,8 @@ void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* m
                           0,
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
                           kVoices + kInputsChannels + idx));
+    connections.push_back(new AudioConnection(
+      voice->getFilter(AudioVoice::VoiceChannels::kLeft), 0, &DrumRack::sendBus(), idx));
 }
 #endif
 
@@ -1789,20 +1803,62 @@ AUDIO_CORE_RAM void playerEngine ::modLP2(uint16_t value)
     }
 }
 
+namespace
+{
+thread_local bool s_kitFxBroadcasting = false;
+}
+
 AUDIO_CORE_RAM void playerEngine ::modCutoff(float value)
 {
     for (int channel = 0; channel < (int)filterPtr.size(); channel++)
     {
         filterPtr[channel]->setCutoff(value);
     }
+    if (!s_kitFxBroadcasting &&
+        DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+        DrumRack::isVoiceOnGlobalKit(nChannel, currentInstrument_idx))
+    {
+        s_kitFxBroadcasting = true;
+        for (uint8_t track = 0; track < audioEngine::kVoices; track++)
+        {
+            if (track == nChannel ||
+                !DrumRack::isVoiceOnGlobalKit(track, currentInstrument_idx))
+                continue;
+            for (int channel = 0; channel < (int)instrumentPlayer[track].filterPtr.size();
+                 channel++)
+            {
+                instrumentPlayer[track].filterPtr[channel]->setCutoff(value);
+            }
+        }
+        s_kitFxBroadcasting = false;
+    }
 }
 AUDIO_CORE_RAM void playerEngine ::modResonance(float value)
 {
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (DrumRack::busFilterEnable(currentInstrument_idx))
     {
         for (int channel = 0; channel < (int)filterPtr.size(); channel++)
         {
             filterPtr[channel]->resonance(value + RESONANCE_OFFSET);
+        }
+        if (!s_kitFxBroadcasting &&
+            DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+            DrumRack::isVoiceOnGlobalKit(nChannel, currentInstrument_idx))
+        {
+            s_kitFxBroadcasting = true;
+            for (uint8_t track = 0; track < audioEngine::kVoices; track++)
+            {
+                if (track == nChannel ||
+                    !DrumRack::isVoiceOnGlobalKit(track, currentInstrument_idx))
+                    continue;
+                for (int channel = 0; channel < (int)instrumentPlayer[track].filterPtr.size();
+                     channel++)
+                {
+                    instrumentPlayer[track].filterPtr[channel]->resonance(value +
+                                                                          RESONANCE_OFFSET);
+                }
+            }
+            s_kitFxBroadcasting = false;
         }
     }
 }
@@ -1812,6 +1868,24 @@ AUDIO_CORE_RAM void playerEngine ::modOverdrive(uint8_t value)
     {
         filterPtr[channel]->setOverdriveAmount(value);
     }
+    if (!s_kitFxBroadcasting &&
+        DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+        DrumRack::isVoiceOnGlobalKit(nChannel, currentInstrument_idx))
+    {
+        s_kitFxBroadcasting = true;
+        for (uint8_t track = 0; track < audioEngine::kVoices; track++)
+        {
+            if (track == nChannel ||
+                !DrumRack::isVoiceOnGlobalKit(track, currentInstrument_idx))
+                continue;
+            for (int channel = 0; channel < (int)instrumentPlayer[track].filterPtr.size();
+                 channel++)
+            {
+                instrumentPlayer[track].filterPtr[channel]->setOverdriveAmount(value);
+            }
+        }
+        s_kitFxBroadcasting = false;
+    }
 }
 
 AUDIO_CORE_RAM void playerEngine ::modBitDepth(uint8_t value)
@@ -1819,6 +1893,24 @@ AUDIO_CORE_RAM void playerEngine ::modBitDepth(uint8_t value)
     for (int channel = 0; channel < (int)bitDepthPtr.size(); channel++)
     {
         bitDepthPtr[channel]->setBitDepth(value);
+    }
+    if (!s_kitFxBroadcasting &&
+        DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+        DrumRack::isVoiceOnGlobalKit(nChannel, currentInstrument_idx))
+    {
+        s_kitFxBroadcasting = true;
+        for (uint8_t track = 0; track < audioEngine::kVoices; track++)
+        {
+            if (track == nChannel ||
+                !DrumRack::isVoiceOnGlobalKit(track, currentInstrument_idx))
+                continue;
+            for (int channel = 0; channel < (int)instrumentPlayer[track].bitDepthPtr.size();
+                 channel++)
+            {
+                instrumentPlayer[track].bitDepthPtr[channel]->setBitDepth(value);
+            }
+        }
+        s_kitFxBroadcasting = false;
     }
 }
 
@@ -1867,6 +1959,50 @@ AUDIO_CORE_RAM void playerEngine ::modDelaySend(uint8_t value)
 #ifdef PLATFORM_IMX
     static constexpr int kInputsChannels = 2;
 #endif
+    const bool isKitVoice =
+      DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+      DrumRack::isVoiceOnGlobalKit(nChannel, currentInstrument_idx);
+
+    if (isKitVoice)
+    {
+#ifndef PLATFORM_IMX
+        preDelayMixer->gain(nChannel, AMP_MUTED);
+#else
+        preDelayMixer->gain(nChannel, AMP_MUTED);
+        preDelayMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, AMP_MUTED);
+#endif
+        const uint8_t padIdx = DrumRack::sendBus().getVoicePad(nChannel);
+        bool isMute = (mtProject.values.delayMute || mtProject.values.trackMute[nChannel]);
+        float voiceScale = 0.0f;
+        if (!isMute)
+        {
+            if (mtProject.values.sendsMode == sendsModePreFader)
+                voiceScale = 1.0f;
+            else
+                voiceScale = getMostSignificantAmount() *
+                             ampLogValues[getMostSignificantVolume()] *
+                             mixAmpLogValues[mtProject.values.trackVolume[nChannel]];
+        }
+        DrumRack::sendBus().setVoiceScale(nChannel, voiceScale);
+
+        const uint8_t effDelay =
+          DrumRack::effectivePadDelaySend(currentInstrument_idx, padIdx);
+        const uint8_t effReverb =
+          DrumRack::effectivePadReverbSend(currentInstrument_idx, padIdx);
+        const float delayGain =
+          (isMute || mtProject.values.delayMute)
+            ? 0.0f
+            : voiceScale * sendsAmpLogValues[effDelay] *
+                mixAmpLogValues[mtProject.values.delayVolume];
+        const float reverbGain =
+          (mtProject.values.reverbMute || mtProject.values.trackMute[nChannel])
+            ? 0.0f
+            : voiceScale * sendsAmpLogValues[effReverb] *
+                mixAmpLogValues[mtProject.values.reverbVolume];
+        DrumRack::sendBus().setVoiceSendGains(nChannel, delayGain, reverbGain);
+        return;
+    }
+
     if (mtProject.values.sendsMode == sendsModePreFader)
     {
 
@@ -1901,6 +2037,50 @@ AUDIO_CORE_RAM void playerEngine ::modDelaySend(uint8_t value)
 AUDIO_CORE_RAM void playerEngine ::modReverbSend(uint8_t value)
 {
     static constexpr int kInputsChannels = 2;
+    const bool isKitVoice =
+      DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+      DrumRack::isVoiceOnGlobalKit(nChannel, currentInstrument_idx);
+
+    if (isKitVoice)
+    {
+#ifndef PLATFORM_IMX
+        prePolyverbMixer->gain(nChannel, AMP_MUTED);
+#else
+        prePolyverbMixer->gain(nChannel, AMP_MUTED);
+        prePolyverbMixer->gain(nChannel + audioEngine::kVoices + kInputsChannels, AMP_MUTED);
+#endif
+        const uint8_t padIdx = DrumRack::sendBus().getVoicePad(nChannel);
+        bool isMute = (mtProject.values.reverbMute || mtProject.values.trackMute[nChannel]);
+        float voiceScale = 0.0f;
+        if (!isMute)
+        {
+            if (mtProject.values.sendsMode == sendsModePreFader)
+                voiceScale = 1.0f;
+            else
+                voiceScale = getMostSignificantAmount() *
+                             ampLogValues[getMostSignificantVolume()] *
+                             mixAmpLogValues[mtProject.values.trackVolume[nChannel]];
+        }
+        DrumRack::sendBus().setVoiceScale(nChannel, voiceScale);
+
+        const uint8_t effDelay =
+          DrumRack::effectivePadDelaySend(currentInstrument_idx, padIdx);
+        const uint8_t effReverb =
+          DrumRack::effectivePadReverbSend(currentInstrument_idx, padIdx);
+        const float delayGain =
+          (mtProject.values.delayMute || mtProject.values.trackMute[nChannel])
+            ? 0.0f
+            : voiceScale * sendsAmpLogValues[effDelay] *
+                mixAmpLogValues[mtProject.values.delayVolume];
+        const float reverbGain =
+          (isMute || mtProject.values.reverbMute)
+            ? 0.0f
+            : voiceScale * sendsAmpLogValues[effReverb] *
+                mixAmpLogValues[mtProject.values.reverbVolume];
+        DrumRack::sendBus().setVoiceSendGains(nChannel, delayGain, reverbGain);
+        return;
+    }
+
     if (mtProject.values.sendsMode == sendsModePreFader)
     {
         float gain = mtProject.values.reverbMute
@@ -2056,6 +2236,25 @@ void playerEngine::modSeqPoints(uint32_t sp, uint32_t ep, uint8_t fx_n)
 AUDIO_CORE_RAM void playerEngine::setRefreshBit(uint32_t mask)
 {
     refreshRegister |= mask;
+}
+
+AUDIO_CORE_RAM void playerEngine::applyDrumRackBusFilterState()
+{
+    if (!DrumRack::isGlobalDrumRack(currentInstrument_idx))
+        return;
+
+    if (DrumRack::busFilterEnable(currentInstrument_idx))
+    {
+        filterConnect();
+        changeFilterType(DrumRack::busFilterType(currentInstrument_idx));
+        if (!isActiveEnvelope(envCutoff))
+            modCutoff(DrumRack::busCutOff(currentInstrument_idx));
+        modResonance(DrumRack::busResonance(currentInstrument_idx));
+    }
+    else
+    {
+        filterDisconnect();
+    }
 }
 
 AUDIO_CORE_RAM void playerEngine ::changeFilterType(uint8_t type)

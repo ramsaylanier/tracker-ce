@@ -17,6 +17,7 @@
 #include "string.h"
 #include "util_math.h"
 
+#include <algorithm>
 #include <map>
 
 static void functLeftPopup();
@@ -426,12 +427,17 @@ int InterfacePopups::convertInstrumentIdxToPopupListPos(enumStepPopups stepPopup
 
     if (stepPopupType == stepPopupInstr)
     {
-#if GUI_HANDLE_SYNTH
-        listPos = instrIdx < SYNTH_INSTRUMENTS_START_IDX ? instrIdx + kSynthInstrumentsCount
-                                                         : instrIdx - SYNTH_INSTRUMENTS_START_IDX;
-#else
-        listPos = instrIdx;
-#endif
+        // Rebuild map so search matches the current active-rack set.
+        listInstruments(stepPopupInstr);
+        listPos = 0;
+        for (int i = 0; i < instrumentListLength; i++)
+        {
+            if (instrumentListMap[i] == (uint8_t)instrIdx)
+            {
+                listPos = i;
+                break;
+            }
+        }
     }
 #if GUI_HANDLE_SYNTH
     else if (stepPopupType == stepPopupOnlyMidiInstr)
@@ -681,20 +687,11 @@ void InterfacePopups::setStepPopupValue(int16_t value)
         }
         case stepPopupInstr:
         {
-            value = clamp<int8_t>(value, 0, kTotalInstrumentsCount - 1);
+            if (instrumentListLength <= 0)
+                listInstruments(stepPopupInstr);
+            value = clamp<int8_t>(value, 0, (int8_t)std::max(0, instrumentListLength - 1));
             selectedActualItem = value;
-#if GUI_HANDLE_SYNTH
-            if (value < kSynthInstrumentsCount)
-            {
-                mtProject.values.lastUsedInstrument = SYNTH_INSTRUMENTS_START_IDX + value;
-            }
-            else
-            {
-                mtProject.values.lastUsedInstrument = value - kSynthInstrumentsCount;
-            }
-#else
-            mtProject.values.lastUsedInstrument = value;
-#endif
+            mtProject.values.lastUsedInstrument = instrumentListMap[selectedActualItem];
 
             display.setControlValue(popupListControl, selectedActualItem);
             display.refreshControl(popupListControl);
@@ -810,22 +807,11 @@ void InterfacePopups::changeStepPopupValue(int16_t value, InterfacePopups::Popup
         }
         case stepPopupInstr:
         {
-            selectedActualItem =
-              clamp<int8_t>(selectedActualItem + value, 0, kTotalInstrumentsCount - 1);
-
-#if GUI_HANDLE_SYNTH
-            if (selectedActualItem < kSynthInstrumentsCount)
-            {
-                mtProject.values.lastUsedInstrument =
-                  SYNTH_INSTRUMENTS_START_IDX + selectedActualItem;
-            }
-            else
-            {
-                mtProject.values.lastUsedInstrument = selectedActualItem - kSynthInstrumentsCount;
-            }
-#else
-            mtProject.values.lastUsedInstrument = selectedActualItem;
-#endif
+            if (instrumentListLength <= 0)
+                listInstruments(stepPopupInstr);
+            selectedActualItem = clamp<int8_t>(
+              selectedActualItem + value, 0, (int8_t)std::max(0, instrumentListLength - 1));
+            mtProject.values.lastUsedInstrument = instrumentListMap[selectedActualItem];
 
             display.setControlValue(popupListControl, selectedActualItem);
             display.refreshControl(popupListControl);
@@ -952,9 +938,21 @@ void InterfacePopups::showActualInstrument()
 
     uint8_t i = mtProject.values.lastUsedInstrument;
 
-    sprintf(actualInstrName, "%d.", i + 1);
-
-    strncat(actualInstrName, mtProject.instrument[i].sample.file_name, 25);
+    if (isDrumRackInstrument(i))
+    {
+        const strDrumRackInstrument& rack =
+          mtProject.drumRackInstrument[drumRackInstrumentToIdx(i)];
+        snprintf(actualInstrName, sizeof(actualInstrName), "%s", rack.name);
+    }
+    else if (i < kSampleInstrumentsCount)
+    {
+        sprintf(actualInstrName, "%d.", i + 1);
+        strncat(actualInstrName, mtProject.instrument[i].sample.file_name, 25);
+    }
+    else
+    {
+        sprintf(actualInstrName, "%d.", i + 1);
+    }
 
     display.setControlText(textLabel2, actualInstrName);
     display.setControlColors(textLabel2, display.getTheme().stepPopupTitleLabelColor);
@@ -978,6 +976,7 @@ int InterfacePopups::listInstruments(enumStepPopups mode)
             interfaceGlobals.intrumentsNames[instrIdx][SAMPLE_NAME_SIZE] = 0;
             interfaceGlobals.ptrIntrumentsNames[instrIdx] =
               &interfaceGlobals.intrumentsNames[instrIdx][0];
+            instrumentListMap[instrIdx] = SYNTH_INSTRUMENTS_START_IDX + i;
             instrIdx++;
         }
     }
@@ -985,6 +984,21 @@ int InterfacePopups::listInstruments(enumStepPopups mode)
 
     if (mode != stepPopupOnlyMidiInstr && mode != stepPopupOnlySynthAndMidiInstr)
     {
+        // Active drum racks only, listed above samples.
+        for (uint8_t i = 0; i < kDrumRackInstrumentsCount; i++)
+        {
+            if (!mtProject.drumRackInstrument[i].isActive)
+                continue;
+            snprintf(&interfaceGlobals.intrumentsNames[instrIdx][0],
+                     sizeof(interfaceGlobals.intrumentsNames[instrIdx]),
+                     "%s",
+                     mtProject.drumRackInstrument[i].name);
+            interfaceGlobals.ptrIntrumentsNames[instrIdx] =
+              &interfaceGlobals.intrumentsNames[instrIdx][0];
+            instrumentListMap[instrIdx] = (uint8_t)drumRackIdxToInstrument(i);
+            instrIdx++;
+        }
+
         for (uint8_t i = 0; i < kSampleInstrumentsCount; i++)
         {
             sprintf(&interfaceGlobals.intrumentsNames[instrIdx][0], "%d. ", i + 1);
@@ -999,6 +1013,7 @@ int InterfacePopups::listInstruments(enumStepPopups mode)
 
             interfaceGlobals.ptrIntrumentsNames[instrIdx] =
               &interfaceGlobals.intrumentsNames[instrIdx][0];
+            instrumentListMap[instrIdx] = i;
             instrIdx++;
         }
     }
@@ -1011,9 +1026,11 @@ int InterfacePopups::listInstruments(enumStepPopups mode)
                 i + 1);
         interfaceGlobals.ptrIntrumentsNames[instrIdx] =
           &interfaceGlobals.intrumentsNames[instrIdx][0];
+        instrumentListMap[instrIdx] = MIDI_INSTRUMENTS_START_IDX + i;
         instrIdx++;
     }
 
+    instrumentListLength = instrIdx;
     return instrIdx;
 }
 

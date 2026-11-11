@@ -12,9 +12,13 @@ struct strImgGridData
     uint8_t imgH = 0;
 
     bool showSelection = false;
+    // When true, textList is centered inside each pad square instead of below it.
+    bool textInPad = false;
     int selection;
 
     char** textList;
+    // Optional second line drawn below each pad (e.g. sample slot under note).
+    char** subTextList = nullptr;
     int8_t* imgList;
 };
 

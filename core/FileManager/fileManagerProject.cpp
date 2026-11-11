@@ -203,6 +203,10 @@ void cFileManager::getDefaultProject(struct strMtProject* source)
     {
         getEmptyInstrument(&source->instrument[i]);
     }
+    for (uint32_t i = 0; i < kDrumRackInstrumentsCount; i++)
+    {
+        initDefaultDrumRackInstrument(&source->drumRackInstrument[i]);
+    }
 
     for (uint32_t i = 0; i < kMaxAllTracksInTrackers; i++)
     {

@@ -1,6 +1,7 @@
 #include "core/interfaceMenuPopup.h"
 #include "core/interfacePopups.h"
 #include "instrumentEditor/instrumentEditor.h"
+#include "DrumRack.h"
 #include "mtAudioEngine.h"
 #include "mtPadBoard.h"
 #include "mtPadsBacklight.h"
@@ -541,7 +542,7 @@ void cSamplePlayback::refreshPreviewTimeLabel()
 
 void cSamplePlayback::listPlayMode()
 {
-    for (uint8_t i = 0; i < playModeCount; i++)
+    for (uint8_t i = 0; i < kSamplePlayModeUiCount; i++)
     {
         playModeNames[i] = (char*)&playModeFunctLabels[i][0];
     }
@@ -675,36 +676,60 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
 {
     (void)velo;
 
-    bool isBeatSlice =
-      mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice;
+    const uint8_t playMode =
+      mtProject.instrument[mtProject.values.lastUsedInstrument].playMode;
+    const bool useKitPadMap =
+      playMode == playModeBeatSlice || playMode == playModeDrumRack;
 
     if (state == buttonPress)
     {
         padsBacklight.setFrontLayer(1, mtConfig.values.padsLightFront, pad);
 
-        uint8_t noteFromPad = mtPadBoard.getNoteFromPad(pad, isBeatSlice);
+        uint8_t noteFromPad = mtPadBoard.getNoteFromPad(pad, useKitPadMap);
 
         SP->noteOnHandle(Sequencer::GRID_OUTSIDE_PATTERN, noteFromPad, 127, pad);
 
-        if (isBeatSlice)
+        if (playMode == playModeBeatSlice)
         {
 #ifndef TRACKER_MINI
             modSliceSelect(pad, true);
 #endif
+        }
+        else if (playMode == playModeDrumRack)
+        {
+            DrumRack::selectPad(
+              mtProject.values.lastUsedInstrument,
+              drumRackNoteToPad(noteFromPad,
+                                DrumRack::firstNoteOfGlobal(mtProject.values.lastUsedInstrument)));
+            SP->showDrumRackPadValue();
+            SP->showDrumRackSampleValue();
+            newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
         }
     }
     else if (state == buttonRelease)
     {
         padsBacklight.setFrontLayer(0, 0, pad);
 
-        uint8_t noteFromPad = mtPadBoard.getNoteFromPad(pad, isBeatSlice);
+        uint8_t noteFromPad = mtPadBoard.getNoteFromPad(pad, useKitPadMap);
 
         SP->noteOffHandle(Sequencer::GRID_OUTSIDE_PATTERN, noteFromPad, 0, pad);
     }
 }
 
+static void functOpenDrumRackEditor()
+{
+    uint8_t button = interfaceButtonParams;
+    uint32_t options = 1;
+    SP->eventFunct(eventSwitchModule, SP, &button, &options);
+}
+
 static void functButton0(uint8_t state)
 {
+    if (SP->editorInstrument->playMode == playModeDrumRack)
+    {
+        return;
+    }
+
     if ((SP->editorInstrument->playMode == playModeBeatSlice) ||
         (SP->editorInstrument->playMode == playModeSlice))
     {
@@ -736,6 +761,11 @@ static void functButton0(uint8_t state)
 static void functButton1(uint8_t state)
 {
     if ((state > buttonPress) && (state != UINT8_MAX))
+    {
+        return;
+    }
+
+    if (SP->editorInstrument->playMode == playModeDrumRack)
     {
         return;
     }
@@ -824,6 +854,11 @@ static void functButton1(uint8_t state)
 static void functButton2(uint8_t state)
 {
     if ((state > buttonPress) && (state != UINT8_MAX))
+    {
+        return;
+    }
+
+    if (SP->editorInstrument->playMode == playModeDrumRack)
     {
         return;
     }
@@ -1113,6 +1148,11 @@ static void functButton4(uint8_t state)
 
 static void functButton5()
 {
+    if (SP->editorInstrument->playMode == playModeDrumRack)
+    {
+        functOpenDrumRackEditor();
+        return;
+    }
     if (SP->editorInstrument->playMode == playModeWavetable)
     {
         return;
@@ -1184,7 +1224,11 @@ static void functEncoder(int16_t value)
         {
             case 0:
             {
-                if ((SP->editorInstrument->playMode == playModeSlice) ||
+                if (SP->editorInstrument->playMode == playModeDrumRack)
+                {
+                    break;
+                }
+                else if ((SP->editorInstrument->playMode == playModeSlice) ||
                     (SP->editorInstrument->playMode == playModeBeatSlice))
                 {
                     modSliceSelect(value);
@@ -1193,7 +1237,11 @@ static void functEncoder(int16_t value)
             }
             case 1:
             {
-                if (SP->loadedInstrumentType == mtSampleTypeWavetable)
+                if (SP->editorInstrument->playMode == playModeDrumRack)
+                {
+                    break;
+                }
+                else if (SP->loadedInstrumentType == mtSampleTypeWavetable)
                 {
                     modWavetablePostion(value);
                 }
@@ -1211,6 +1259,10 @@ static void functEncoder(int16_t value)
             }
             case 2:
             {
+                if (SP->editorInstrument->playMode == playModeDrumRack)
+                {
+                    break;
+                }
                 if (SP->slice2ndScreenActive())
                 {
                     SP->modEqualSliceNumber(value);
@@ -1795,8 +1847,8 @@ static void changePlayModeSelection(int16_t value)
 
     if (SP->editorInstrument->playMode + value < 0)
         SP->editorInstrument->playMode = 0;
-    else if (SP->editorInstrument->playMode + value > playModeCount - 1)
-        SP->editorInstrument->playMode = playModeCount - 1;
+    else if (SP->editorInstrument->playMode + value > kSamplePlayModeUiCount - 1)
+        SP->editorInstrument->playMode = kSamplePlayModeUiCount - 1;
     else
         SP->editorInstrument->playMode += value;
 
@@ -1862,6 +1914,14 @@ static void changePlayModeSelection(int16_t value)
             SP->refreshSpectrum = 1;
         SP->editorInstrument->sample.type = 0;
         SP->loadedInstrumentType = SP->editorInstrument->sample.type;
+    }
+
+    if (SP->editorInstrument->playMode == playModeDrumRack)
+    {
+        SP->editorInstrument->isActive = 1;
+        SP->showDefaultScreen();
+        newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
+        return;
     }
 
     if (((SP->editorInstrument->playMode == playModeSingleShot) && (value < 0)) ||

@@ -96,6 +96,10 @@ void ImgGrid::update()
     int boxH = (height - (data->rowsCount + 1)) / data->rowsCount;
     int frameX = posX;
     int frameY = posY;
+    // Leave room under the pad for subText when both are used.
+    const bool padAboveSubText = data->textInPad && data->subTextList != nullptr;
+    const int padToSubTextGap = 2;
+    const int padTextReserve = padAboveSubText ? (font->height + padToSubTextGap) : 0;
 
     API_SAVE_CONTEXT();
 
@@ -118,6 +122,8 @@ void ImgGrid::update()
 
             int boxX = posX + boxW / 2 + boxW * column - data->imgW / 2;
             int boxY = posY + boxH / 2 + boxH * row - data->imgH / 2;
+            if (padAboveSubText)
+                boxY = posY + boxH * row + (boxH - padTextReserve - data->imgH) / 2;
 
             API_VERTEX2F(boxX, boxY);
             API_VERTEX2F(boxX + data->imgW, boxY + data->imgH);
@@ -125,7 +131,7 @@ void ImgGrid::update()
             if (currentBoxIdx == data->selection)
             {
                 frameX = posX + boxW * column;
-                frameY = posY + boxH * row + 8;
+                frameY = posY + boxH * row;
             }
         }
     }
@@ -176,9 +182,6 @@ void ImgGrid::update()
 
     if (data->textList != nullptr)
     {
-        colorIdx = 0;
-        API_COLOR(colors[colorIdx]);
-
         for (int column = 0; column < data->columnsCount; column++)
         {
             for (int row = 0; row < data->rowsCount; row++)
@@ -192,10 +195,51 @@ void ImgGrid::update()
 
                 int textX = posX + boxW * column + boxW / 2;
                 int textY = posY + boxH * row + boxH - font->height + 3;
+                if (data->textInPad)
+                {
+                    const int boxX = posX + boxW / 2 + boxW * column - data->imgW / 2;
+                    int boxY = posY + boxH / 2 + boxH * row - data->imgH / 2;
+                    if (padAboveSubText)
+                        boxY = posY + boxH * row + (boxH - padTextReserve - data->imgH) / 2;
+                    textX = boxX + data->imgW / 2;
+                    textY = boxY + data->imgH / 2 - font->height / 2;
+                }
+
+                // Selected pad fill is colors[3] (often white); use colors[1] so in-pad text stays readable.
+                const bool selectedPad = (currentBoxIdx == value);
+                API_COLOR(data->textInPad && selectedPad ? colors[1] : colors[0]);
 
                 char* text = data->textList[currentBoxIdx];
 
                 API_CMD_TEXT(textX, textY, font->handle, textStyle, text);
+            }
+        }
+    }
+
+    if (data->subTextList != nullptr)
+    {
+        colorIdx = 0;
+        API_COLOR(colors[colorIdx]);
+
+        for (int column = 0; column < data->columnsCount; column++)
+        {
+            for (int row = 0; row < data->rowsCount; row++)
+            {
+                int currentBoxIdx = row * data->columnsCount + column;
+
+                if (data->subTextList[currentBoxIdx] == nullptr)
+                    continue;
+
+                const int textX = posX + boxW * column + boxW / 2;
+                int textY = posY + boxH * row + boxH - font->height + 3;
+                if (padAboveSubText)
+                {
+                    const int boxY =
+                      posY + boxH * row + (boxH - padTextReserve - data->imgH) / 2;
+                    textY = boxY + data->imgH + padToSubTextGap;
+                }
+                API_CMD_TEXT(
+                  textX, textY, font->handle, textStyle, data->subTextList[currentBoxIdx]);
             }
         }
     }

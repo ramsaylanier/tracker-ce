@@ -1,3 +1,4 @@
+#include "DrumRack.h"
 #include "ampLogarythmicValues.h"
 #include "mtAudioEngine.h"
 #include "mtWavetableEnvelopes.h"
@@ -10,7 +11,8 @@ using namespace mtAudioEngineConstans;
 // zaktualizowac performanceMode bo bedzie wyliczany na podstawie nowych zmienionych wartosci w sequ
 AUDIO_CORE_RAM void playerEngine::seqFx(uint8_t fx_id, uint8_t fx_val, uint8_t fx_n)
 {
-    if (isBlockedNoteOn[currentInstrument_idx])
+    if (!DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+        isBlockedNoteOn[currentInstrument_idx])
         return;
 
     AudioNoInterrupts();
@@ -2091,6 +2093,11 @@ AUDIO_CORE_RAM uint8_t playerEngine::isFxVelocity(uint8_t fx_id)
 }
 float playerEngine::getMostSignificantAmount()
 {
+    // Drum-rack pads use a synthetic amp envelope (amount 1.0). Never index
+    // instrument[67+] — that array only holds sample slots 0..47.
+    if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+        return 1.0f;
+
     float localAmount = 0.0f;
 
     if (trackControlParameter[(int)controlType::sequencerMode][(int)parameterList::lfoAmp] ||
@@ -2144,6 +2151,12 @@ uint8_t playerEngine::getMostSignificantVolume()
                                            (int)MIN_INSTRUMENT_VOLUME,
                                            (int)MAX_INSTRUMENT_VOLUME);
         }
+        else if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+        {
+            const uint8_t padIdx = drumRackNoteToPad(
+              currentNote, DrumRack::firstNoteOfGlobal(currentInstrument_idx));
+            localVol = mtProject.drumRackInstrument[DrumRack::poolIdxFromGlobal(currentInstrument_idx)].rack.pads[padIdx].volume;
+        }
         else
         {
             localVol = mtProject.instrument[currentInstrument_idx].volume;
@@ -2152,6 +2165,17 @@ uint8_t playerEngine::getMostSignificantVolume()
         if (trackControlParameter[(int)controlType::performanceMode][(int)parameterList::volume])
         {
             localVol = (uint8_t)clamp<int>((int)localVol + (int)performanceMod.volume,
+                                           (int)MIN_INSTRUMENT_VOLUME,
+                                           (int)MAX_INSTRUMENT_VOLUME);
+        }
+
+        if (DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+            stepVelocity >= 0)
+        {
+            const uint8_t padIdx = drumRackNoteToPad(
+              currentNote, DrumRack::firstNoteOfGlobal(currentInstrument_idx));
+            const uint8_t padVol = mtProject.drumRackInstrument[DrumRack::poolIdxFromGlobal(currentInstrument_idx)].rack.pads[padIdx].volume;
+            localVol = (uint8_t)clamp<int>(((int)localVol * (int)padVol) / 100,
                                            (int)MIN_INSTRUMENT_VOLUME,
                                            (int)MAX_INSTRUMENT_VOLUME);
         }
@@ -2164,6 +2188,11 @@ void playerEngine::initEnvelopesParameters(uint8_t n, envelopeGenerator::strEnv*
 {
     if (n == envAmp)
     {
+        const bool isKit = DrumRack::isGlobalDrumRack(currentInstrument_idx);
+        const uint8_t lfoShape = isKit ? 0 : mtProject.instrument[currentInstrument_idx].lfo[envAmp].shape;
+        const uint8_t lfoBend = isKit ? 0 : mtProject.instrument[currentInstrument_idx].lfo[envAmp].wtBend;
+        const uint8_t lfoSust = isKit ? 0 : mtProject.instrument[currentInstrument_idx].lfo[envAmp].wtSust;
+
         for (int channel = 0; channel < (int)playMemPtr.size(); channel++)
         {
             if (env->enable)
@@ -2182,11 +2211,7 @@ void playerEngine::initEnvelopesParameters(uint8_t n, envelopeGenerator::strEnv*
             playMemPtr[channel]->envelopeSustain(env->sustain);
             playMemPtr[channel]->envelopeRelease(env->release);
             playMemPtr[channel]->envelopeSetLoop(env->loop);
-            playMemPtr[channel]->envelopeSetWavetable(
-              env->loop,
-              mtProject.instrument[currentInstrument_idx].lfo[envAmp].shape,
-              mtProject.instrument[currentInstrument_idx].lfo[envAmp].wtBend,
-              mtProject.instrument[currentInstrument_idx].lfo[envAmp].wtSust);
+            playMemPtr[channel]->envelopeSetWavetable(env->loop, lfoShape, lfoBend, lfoSust);
         }
 
         uint8_t localVol = getMostSignificantVolume();
@@ -2196,15 +2221,28 @@ void playerEngine::initEnvelopesParameters(uint8_t n, envelopeGenerator::strEnv*
     else
     {
         envelopePtr[n]->init(env);
-        envelopePtr[n]->setWavetableParams(
-          mtProject.instrument[currentInstrument_idx].lfo[n].shape,
-          mtProject.instrument[currentInstrument_idx].lfo[n].wtBend,
-          mtProject.instrument[currentInstrument_idx].lfo[n].wtSust);
+        if (!DrumRack::isGlobalDrumRack(currentInstrument_idx))
+        {
+            envelopePtr[n]->setWavetableParams(
+              mtProject.instrument[currentInstrument_idx].lfo[n].shape,
+              mtProject.instrument[currentInstrument_idx].lfo[n].wtBend,
+              mtProject.instrument[currentInstrument_idx].lfo[n].wtSust);
+        }
     }
 }
 
 AUDIO_CORE_RAM bool playerEngine::isActiveEnvelope(uint8_t type)
 {
+    if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+    {
+        // Pads always run a synthetic amp envelope; other envs are not sample-slot based.
+        if (type == envAmp)
+            return true;
+        return (
+          (trackControlParameter[(int)controlType::performanceMode][envelopesControlValue[type]]) ||
+          (trackControlParameter[(int)controlType::sequencerMode][envelopesControlValue[type]]) ||
+          (trackControlParameter[(int)controlType::sequencerMode2][envelopesControlValue[type]]));
+    }
     return (
       (mtProject.instrument[currentInstrument_idx].envelope[type].enable) ||
       (trackControlParameter[(int)controlType::performanceMode][envelopesControlValue[type]]) ||
@@ -2382,7 +2420,7 @@ void playerEngine::clearFxBitDepth()
     }
     else
     {
-        modBitDepth(mtProject.instrument[currentInstrument_idx].bitDepth);
+        modBitDepth(DrumRack::busBitDepth(currentInstrument_idx));
     }
 }
 // FINETUNE
@@ -2695,7 +2733,7 @@ void playerEngine::clearFxOverdrive()
     }
     else
     {
-        modOverdrive(mtProject.instrument[currentInstrument_idx].overdrive);
+        modOverdrive(DrumRack::busOverdrive(currentInstrument_idx));
     }
 }
 // FILTER
@@ -2720,7 +2758,7 @@ void playerEngine::clearFxCutoff()
     }
     else
     {
-        float localCutoff = mtProject.instrument[currentInstrument_idx].cutOff;
+        float localCutoff = DrumRack::busCutOff(currentInstrument_idx);
 
         if (currentEnvelopeModification[envCutoff] != 0.0f)
         {
@@ -2735,7 +2773,7 @@ void playerEngine::clearFxCutoff()
         if (!isActiveEnvelope(envCutoff))
             modCutoff(localCutoff);
 
-        if (!mtProject.instrument[currentInstrument_idx].filterEnable)
+        if (!DrumRack::busFilterEnable(currentInstrument_idx))
             filterDisconnect();
         else
             filterConnect();
@@ -2761,7 +2799,7 @@ void playerEngine::clearFxFilterType()
     }
     else
     {
-        changeFilterType(mtProject.instrument[currentInstrument_idx].filterType);
+        changeFilterType(DrumRack::busFilterType(currentInstrument_idx));
     }
 }
 

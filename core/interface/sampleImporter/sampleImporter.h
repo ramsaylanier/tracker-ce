@@ -26,11 +26,15 @@ class cSampleImporter : public ModuleBase
 
     virtual void initDisplayControls();
     virtual void destroyDisplayControls() {}
+    virtual uint8_t getCurrentModeIdx();
+    virtual uint8_t menuModeCount();
+    virtual uint32_t menuModeOption(uint8_t index);
 
     cSampleImporter() {}
     virtual ~cSampleImporter() {}
 
     void showDefaultScreen();
+    void showRacksScreen();
     void showActualInstrument();
     void showFilesTree();
     void showInstrumentsList();
@@ -39,6 +43,15 @@ class cSampleImporter : public ModuleBase
     void showMemoryUsage();
     void activateLabelsBorder();
     void resizeWaveforms();
+
+    bool racksPage = false;
+    strLabelData labelDataMore;
+
+    void setRacksScreenFunct();
+    void toggleRacksPage();
+    bool createDrumRackOnSelectedSlot();
+    void openSelectedDrumRackEditor();
+    void clearSelectedDrumRack();
 
     void showStopPatternPopup();
     void hideStopPatternPopup();
@@ -126,6 +139,7 @@ class cSampleImporter : public ModuleBase
 
     //--------------------------------------------------------------
     void refreshActionButtons();
+    void refreshRacksActionButtons();
 
     void BrowseOrAdd();
     void importSamples();

@@ -729,14 +729,22 @@ void cPatternEditor::refreshPattern()
             //--------------------------------------------------------------------------------------------
             if (showInstrument)
             {
-                if (seqStep.instrument >= SYNTH_INSTRUMENTS_START_IDX)
+                if (isDrumRackInstrument(seqStep.instrument))
+                {
+                    row.instr[0] = 'R';
+                    row.instr[1] =
+                      49 + (seqStep.instrument - DRUM_RACK_INSTRUMENTS_START_IDX);
+                    row.instr[2] = 0;
+                    row.instr[3] = 0;
+                }
+                else if (isSynthInstrument(seqStep.instrument))
                 {
                     row.instr[0] = 'S';
                     row.instr[1] = 49 + (seqStep.instrument - SYNTH_INSTRUMENTS_START_IDX);
                     row.instr[2] = 0;
                     row.instr[3] = 0;
                 }
-                else if (seqStep.instrument >= MIDI_INSTRUMENTS_START_IDX)
+                else if (isMidiInstrument(seqStep.instrument))
                 {
                     char inst0 = (seqStep.instrument - kSampleInstrumentsCount + 1) / 10;
                     char inst1 = (seqStep.instrument - kSampleInstrumentsCount + 1) % 10;
@@ -5085,14 +5093,10 @@ void cPatternEditor::refreshLastUsedInstrument()
     {
         mtProject.values.lastUsedNote = actualStep->note;
 
-#if GUI_HANDLE_SYNTH
-        int kMaxInstruments =
-          kSampleInstrumentsCount + kMidiInstrumentsCount + kSynthInstrumentsCount - 1;
-#else
-        int kMaxInstruments = kSampleInstrumentsCount + kMidiInstrumentsCount - 1;
-#endif
+        // Include drum-rack pool (67..74); older caps stopped at MIDI/synth and remapped
+        // racks into MIDI Instrument Parameters.
         mtProject.values.lastUsedInstrument =
-          clamp<int>(actualStep->instrument, 0, kMaxInstruments);
+          clamp<int>(actualStep->instrument, 0, kTotalInstrumentsCount - 1);
     }
 }
 

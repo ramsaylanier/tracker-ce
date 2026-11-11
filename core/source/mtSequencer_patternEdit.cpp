@@ -1061,49 +1061,65 @@ uint8_t Sequencer::changeInstrumentInSpecificOrder(int8_t actualValue,
                                                    int16_t delta,
                                                    bool midiTypeOnly)
 {
-    int instrumentCount =
-      midiTypeOnly ? kTotalInstrumentsCount - kSampleInstrumentsCount : kTotalInstrumentsCount;
+    // Order matches Instr popup intent: MIDI (desc), synths, drum racks, samples.
+    // midiTypeOnly omits samples and drum racks (sample-track kit instruments).
+    const int instrumentCount =
+      midiTypeOnly ? (kMidiInstrumentsCount + kSynthInstrumentsCount)
+                   : kTotalInstrumentsCount;
 
-    if (midiTypeOnly && delta == 0 && isSampleInstrument(actualValue))
+    if (midiTypeOnly && delta == 0 &&
+        (isSampleInstrument(actualValue) || isDrumRackInstrument(actualValue)))
     {
         return MIDI_INSTRUMENTS_START_IDX;
     }
 
-    uint8_t uiChangeInstrumentOrder[instrumentCount];
-    [[maybe_unused]] bool initArray = [&]() -> bool
+    // Exact set with delta 0: keep the requested instrument when it is valid.
+    // Avoids falling through to order[0] (MIDI ch 16) when the value was missing
+    // from an outdated order table.
+    if (delta == 0 && actualValue >= 0 && actualValue < kTotalInstrumentsCount)
     {
-        int pos = 0;
-        for (pos = 0; pos < kMidiInstrumentsCount; pos++)
+        if (midiTypeOnly)
         {
-            uiChangeInstrumentOrder[pos] =
-              kSampleInstrumentsCount + kMidiInstrumentsCount - pos - 1;
+            if (isMidiInstrument(actualValue) || isSynthInstrument(actualValue))
+                return (uint8_t)actualValue;
         }
-
-#ifdef FEATURE_SYNTH
-        int synthInstrIdx = kSampleInstrumentsCount + kMidiInstrumentsCount;
-        for (; pos < kMidiInstrumentsCount + kSynthInstrumentsCount; pos++, synthInstrIdx++)
+        else if (isSampleInstrument(actualValue) || isMidiInstrument(actualValue) ||
+                 isSynthInstrument(actualValue) || isDrumRackInstrument(actualValue))
         {
-            uiChangeInstrumentOrder[pos] = synthInstrIdx;
+            return (uint8_t)actualValue;
         }
-#endif
+    }
 
-        int sampleInstrIdx = 0;
-        for (; pos < instrumentCount; pos++, sampleInstrIdx++)
-        {
-            uiChangeInstrumentOrder[pos] = sampleInstrIdx;
-        }
-        return true;
-    }();
-
-    int instrumentPosInOrder = 0;
-    for (uint8_t a = 0; a < instrumentCount; a++)
+    uint8_t uiChangeInstrumentOrder[kTotalInstrumentsCount];
+    int pos = 0;
+    for (int i = 0; i < kMidiInstrumentsCount; i++, pos++)
     {
-        if (uiChangeInstrumentOrder[a] == actualValue)
+        uiChangeInstrumentOrder[pos] = kSampleInstrumentsCount + kMidiInstrumentsCount - i - 1;
+    }
+
+    for (int i = 0; i < kSynthInstrumentsCount; i++, pos++)
+        uiChangeInstrumentOrder[pos] = SYNTH_INSTRUMENTS_START_IDX + i;
+
+    if (!midiTypeOnly)
+    {
+        for (int i = 0; i < kDrumRackInstrumentsCount; i++, pos++)
+            uiChangeInstrumentOrder[pos] = DRUM_RACK_INSTRUMENTS_START_IDX + i;
+
+        for (int i = 0; i < kSampleInstrumentsCount; i++, pos++)
+            uiChangeInstrumentOrder[pos] = (uint8_t)i;
+    }
+
+    int instrumentPosInOrder = -1;
+    for (int a = 0; a < instrumentCount; a++)
+    {
+        if (uiChangeInstrumentOrder[a] == (uint8_t)actualValue)
         {
             instrumentPosInOrder = a;
             break;
         }
     }
+    if (instrumentPosInOrder < 0)
+        instrumentPosInOrder = midiTypeOnly ? 0 : (instrumentCount - kSampleInstrumentsCount);
 
     instrumentPosInOrder = clamp<int>(instrumentPosInOrder + delta, 0, instrumentCount - 1);
 

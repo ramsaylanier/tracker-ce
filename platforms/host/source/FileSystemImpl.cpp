@@ -70,6 +70,11 @@ void FileSystemImpl::setMountEventCallback(CardStateChangeCallback funct)
     mountCallback = funct;
 }
 
+bool FileSystemImpl::remount()
+{
+    return mounted;
+}
+
 bool FileSystemImpl::exists(const char* path)
 {
     struct stat st{};
@@ -224,20 +229,20 @@ std::tuple<bool, FileSystem::FileHandle> FileSystemImpl::openFile(const char* fi
     return { true, f };
 }
 
-size_t FileSystemImpl::readFile(void* destBuf, size_t bufLen, FileHandle file)
+int32_t FileSystemImpl::readFile(void* destBuf, size_t bufLen, FileHandle file)
 {
     HostFile* f = asFile(file);
     if (!f || !f->fp)
         return 0;
-    return std::fread(destBuf, 1, bufLen, f->fp);
+    return (int32_t)std::fread(destBuf, 1, bufLen, f->fp);
 }
 
-size_t FileSystemImpl::writeFile(const void* data, size_t dataSize, FileHandle fileHandle)
+int32_t FileSystemImpl::writeFile(const void* data, size_t dataSize, FileHandle fileHandle)
 {
     HostFile* f = asFile(fileHandle);
     if (!f || !f->fp)
         return 0;
-    return std::fwrite(data, 1, dataSize, f->fp);
+    return (int32_t)std::fwrite(data, 1, dataSize, f->fp);
 }
 
 bool FileSystemImpl::seekFileCur(int offset, FileHandle fileHandle)

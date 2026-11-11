@@ -50,7 +50,8 @@ This unified codebase powers all three hardware instruments in the Tracker famil
 ├── core/                   # Shared Tracker application, audio engine, UI & open synth engines
 ├── platforms/
 │   ├── mk66/               # Original Tracker (Kinetis MK66) HAL, drivers & linker scripts
-│   └── imx/                # Tracker+ & Tracker Mini (i.MX RT1051) HAL, drivers & linker scripts
+│   ├── imx/                # Tracker+ & Tracker Mini (i.MX RT1051) HAL, drivers & linker scripts
+│   └── host/               # Desktop host emulator (SDL2) for trying core/ without flashing
 ├── synth/
 │   ├── include/PolySynth/  # PolySynth public headers & Open Synth SDK (synth/include/PolySynth/sdk/)
 │   └── lib/                # Precompiled libPolySynth.a & libPolyDSP.a + LICENSE-PROPRIETARY.txt
@@ -111,6 +112,9 @@ make select
 # Build reference .ptfx Sample Editor effects into editor-fx-sdk/build/Effects/:
 make ptfx
 
+# Desktop host emulator (macOS/Linux, needs SDL2) -> build/tracker-host
+make host
+
 # Clean all build directories:
 make clean
 ```
@@ -156,6 +160,31 @@ make bump-minor TARGET=all        # or TARGET=original | TARGET=plus | TARGET=mi
 
 ---
 
+## Desktop Host Emulator
+
+[`platforms/host/`](platforms/host/README.md) builds the instrument code in `core/` as a desktop app for macOS and Linux. Use it to exercise the UI, feature modules, and playback without flashing a `.ptf`. The host is compiled as Tracker Mini (`TRACKER_MINI`), so the Module Menu works: hold Menu on a device, or press **F10** or **\`** in the emulator. The factory synth libraries in `synth/lib/` are not linked.
+
+SDL2 is required (`brew install sdl2` on macOS; `sdl2-config` must be on your `PATH`). From the repository root:
+
+```bash
+make host
+./build/tracker-host --sd ./sdcard
+```
+
+The window is 800×480. The folder passed to `--sd` is the fake microSD card. On first run the host creates empty `Projects/` and `Workspace/` stubs there. `make host` includes every module under `feature-modules/`, the same default as a device build.
+
+```bash
+# Record audio while the window is open
+./build/tracker-host --sd ./sdcard --wav out.wav
+
+# Headless scripted check (virtual time, no window)
+./build/tracker-host --sd ./sdcard --script platforms/host/scripts/smoke.txt --wav smoke.wav
+```
+
+The key map, script commands (`tap`, `pad`, `enc`, `screenshot`, and the rest), and current limits are in [`platforms/host/README.md`](platforms/host/README.md). USB, FM radio, the battery gauge, and the on-chip bootloader are stubs. The display rasterizer covers the FT812 commands this UI uses. Audio timing and memory budgets still need a check on real hardware.
+
+---
+
 ## Documentation & Developer Guides
 
 Full user and developer documentation is available in [`docs/`](docs/Home.md) and on the repository **Wiki**:
@@ -163,6 +192,7 @@ Full user and developer documentation is available in [`docs/`](docs/Home.md) an
 * **User Guides**:
   * [Custom Themes & Fonts](docs/custom_themes_and_fonts.md) + [Live Web Editor](https://polyend.github.io/tracker-theme-editor/) ([`polyend/tracker-theme-editor`](https://github.com/polyend/tracker-theme-editor))
   * [Custom Firmware Builder](https://ramsaylanier.github.io/tracker-ce/) (select feature modules; Actions builds a `.ptf`)
+  * [Desktop Host Emulator](platforms/host/README.md) (run Tracker Mini UI on macOS/Linux)
   * [Wavetable Envelopes, LFOs & Step FX](docs/wavetable_envelopes.md)
   * [SD Card Image Viewer](docs/image_viewer.md)
 * **Developer & Architecture Guides**:

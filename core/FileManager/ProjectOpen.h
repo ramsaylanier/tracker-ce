@@ -43,6 +43,7 @@ class ProjectOpen : public FileManagerOperation
     void loadProjectFileFromSd();
     bool copyPaterns(int& idx);
     bool copyInstruments(int idx, uint8_t& copyState);
+    void copyDrumRackSidecar(int idx);
     bool copySamples(int idx, uint8_t& copyState);
     void openProjectFinish();
 

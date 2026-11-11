@@ -1,5 +1,6 @@
 #include "play_memory.h"
 #include "Audio.h"
+#include "DrumRack.h"
 #include "ampLogarythmicValues.h"
 #include "dspinst.h"
 #include "mtAudioEngine.h"
@@ -185,6 +186,11 @@ void AudioPlayMemory::init(Timer* timer, int channel, int voiceIdx)
 //**************************************************************************************PLAY
 AUDIO_CORE_FLASH uint8_t AudioPlayMemory::play(uint8_t instrIdx, int8_t note)
 {
+    if (DrumRack::isGlobalDrumRack(instrIdx))
+    {
+        playDrumRack(DrumRack::poolIdxFromGlobal(instrIdx), note);
+    }
+    else
     switch (mtProject.instrument[instrIdx].playMode)
     {
         case playModeSingleShot: playSingleShot(instrIdx, note); break;

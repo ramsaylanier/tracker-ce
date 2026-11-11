@@ -1,3 +1,4 @@
+#include "DrumRack.h"
 #include "ampLogarythmicValues.h"
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
@@ -8,10 +9,19 @@ using namespace mtAudioEngineConstans;
 //********************************** NOTE_ON
 uint8_t playerEngine ::noteOn(uint8_t instr_idx, int8_t note, int8_t _velocity)
 {
-    if (mtProject.instrument[instr_idx].isActive != 1)
-        return 0;
-    if (isBlockedNoteOn[instr_idx])
-        return 0;
+    if (DrumRack::isGlobalDrumRack(instr_idx))
+    {
+        strDrumRackInstrument* rack = DrumRack::globalInstrument(instr_idx);
+        if (rack == nullptr || !rack->isActive)
+            return 0;
+    }
+    else
+    {
+        if (mtProject.instrument[instr_idx].isActive != 1)
+            return 0;
+        if (isBlockedNoteOn[instr_idx])
+            return 0;
+    }
     //	engine.clearDelay();
 
     endFx(lastSeqFx[0], 0);
@@ -25,6 +35,19 @@ uint8_t playerEngine ::noteOn(uint8_t instr_idx, int8_t note, int8_t _velocity)
     currentInstrument_idx = instr_idx;
     currentNote = note;
     stepVelocity = _velocity;
+
+    if (DrumRack::isGlobalDrumRack(instr_idx))
+    {
+        const uint8_t padIdx =
+          drumRackNoteToPad(note, DrumRack::firstNoteOfGlobal(instr_idx));
+        const uint8_t kitPool = DrumRack::poolIdxFromGlobal(instr_idx);
+        DrumRack::chokeOtherPads(kitPool, padIdx, nChannel);
+        DrumRack::sendBus().setVoiceKit(nChannel, kitPool, padIdx);
+    }
+    else
+    {
+        DrumRack::sendBus().clearVoice(nChannel);
+    }
 
     handleInitNoteOnAllEnvelopes(); // kill + init
 
@@ -44,26 +67,33 @@ uint8_t playerEngine ::noteOn(uint8_t instr_idx, int8_t note, int8_t _velocity)
     if (isTrackDisplayed)
         onEndDisplay = true;
 
-    bool isAmpRandom = (mtProject.instrument[instr_idx].envelope[envAmp].loop == 1) &&
-                       (mtProject.instrument[instr_idx].lfo[envAmp].shape == lfoShapeRandom);
+    bool isAmpRandom = false;
+    if (!DrumRack::isGlobalDrumRack(instr_idx))
+    {
+        isAmpRandom = (mtProject.instrument[instr_idx].envelope[envAmp].loop == 1) &&
+                      (mtProject.instrument[instr_idx].lfo[envAmp].shape == lfoShapeRandom);
+    }
     for (int channel = 0; channel < (int)playMemPtr.size(); channel++)
     {
         playMemPtr[channel]->envelopeSetIsRandom(isAmpRandom);
         playMemPtr[channel]->envelopeNoteOn(instr_idx, note);
     }
 
-    for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
+    if (!DrumRack::isGlobalDrumRack(instr_idx))
     {
-        if (mtProject.instrument[instr_idx].isEnvEnabled(i))
+        for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
         {
-            bool isRandom = (mtProject.instrument[instr_idx].envelope[i].loop == 1) &&
-                            (mtProject.instrument[instr_idx].lfo[i].shape == lfoShapeRandom);
-            envelopePtr[i]->setIsRandom(isRandom);
-            envelopePtr[i]->setWavetableParams(
-              mtProject.instrument[instr_idx].lfo[i].shape,
-              mtProject.instrument[instr_idx].lfo[i].wtBend,
-              mtProject.instrument[instr_idx].lfo[i].wtSust);
-            envelopePtr[i]->start();
+            if (mtProject.instrument[instr_idx].isEnvEnabled(i))
+            {
+                bool isRandom = (mtProject.instrument[instr_idx].envelope[i].loop == 1) &&
+                                (mtProject.instrument[instr_idx].lfo[i].shape == lfoShapeRandom);
+                envelopePtr[i]->setIsRandom(isRandom);
+                envelopePtr[i]->setWavetableParams(
+                  mtProject.instrument[instr_idx].lfo[i].shape,
+                  mtProject.instrument[instr_idx].lfo[i].wtBend,
+                  mtProject.instrument[instr_idx].lfo[i].wtSust);
+                envelopePtr[i]->start();
+            }
         }
     }
 
@@ -81,10 +111,19 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
                                              uint8_t fx2_id,
                                              uint8_t fx2_val)
 {
-    if (mtProject.instrument[instr_idx].isActive != 1)
-        return 0;
-    if (isBlockedNoteOn[instr_idx])
-        return 0;
+    if (DrumRack::isGlobalDrumRack(instr_idx))
+    {
+        strDrumRackInstrument* rack = DrumRack::globalInstrument(instr_idx);
+        if (rack == nullptr || !rack->isActive)
+            return 0;
+    }
+    else
+    {
+        if (mtProject.instrument[instr_idx].isActive != 1)
+            return 0;
+        if (isBlockedNoteOn[instr_idx])
+            return 0;
+    }
     //	__disable_irq();
     AudioNoInterrupts();
     uint8_t status;
@@ -92,6 +131,19 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
     currentInstrument_idx = instr_idx;
     currentNote = note;
     stepVelocity = velocity;
+
+    if (DrumRack::isGlobalDrumRack(instr_idx))
+    {
+        const uint8_t padIdx =
+          drumRackNoteToPad(note, DrumRack::firstNoteOfGlobal(instr_idx));
+        const uint8_t kitPool = DrumRack::poolIdxFromGlobal(instr_idx);
+        DrumRack::chokeOtherPads(kitPool, padIdx, nChannel);
+        DrumRack::sendBus().setVoiceKit(nChannel, kitPool, padIdx);
+    }
+    else
+    {
+        DrumRack::sendBus().clearVoice(nChannel);
+    }
 
     handleInitFxNoteOnAllEnvelopes();
 
@@ -180,8 +232,12 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
         }
     }
 
-    bool isAmpRandom = (mtProject.instrument[instr_idx].envelope[envAmp].loop == 1) &&
-                       (mtProject.instrument[instr_idx].lfo[envAmp].shape == lfoShapeRandom);
+    bool isAmpRandom = false;
+    if (!DrumRack::isGlobalDrumRack(instr_idx))
+    {
+        isAmpRandom = (mtProject.instrument[instr_idx].envelope[envAmp].loop == 1) &&
+                      (mtProject.instrument[instr_idx].lfo[envAmp].shape == lfoShapeRandom);
+    }
 
     for (int channel = 0; channel < playMemPtr.size(); channel++)
     {
@@ -190,24 +246,29 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
                                             note); // zawsze odpalamy nawet jak nie aktywny
     }
 
-    for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
+    if (!DrumRack::isGlobalDrumRack(instr_idx))
     {
-        if (isActiveEnvelope(i))
+        for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
         {
-            bool isRandom = (mtProject.instrument[instr_idx].envelope[i].loop == 1) &&
-                            (mtProject.instrument[instr_idx].lfo[i].shape == lfoShapeRandom);
-            envelopePtr[i]->setIsRandom(isRandom);
-            if (i != envCutoff ||
-                (!trackControlParameter[(int)controlType::sequencerMode][(int)parameterList::filterAttack] &&
-                 !trackControlParameter[(int)controlType::sequencerMode2][(int)parameterList::filterAttack]))
+            if (isActiveEnvelope(i))
             {
-                envelopePtr[i]->setWavetableParams(
-                  mtProject.instrument[instr_idx].lfo[i].shape,
-                  mtProject.instrument[instr_idx].lfo[i].wtBend,
-                  mtProject.instrument[instr_idx].lfo[i].wtSust);
+                bool isRandom = (mtProject.instrument[instr_idx].envelope[i].loop == 1) &&
+                                (mtProject.instrument[instr_idx].lfo[i].shape == lfoShapeRandom);
+                envelopePtr[i]->setIsRandom(isRandom);
+                if (i != envCutoff ||
+                    (!trackControlParameter[(int)controlType::sequencerMode]
+                                           [(int)parameterList::filterAttack] &&
+                     !trackControlParameter[(int)controlType::sequencerMode2]
+                                           [(int)parameterList::filterAttack]))
+                {
+                    envelopePtr[i]->setWavetableParams(
+                      mtProject.instrument[instr_idx].lfo[i].shape,
+                      mtProject.instrument[instr_idx].lfo[i].wtBend,
+                      mtProject.instrument[instr_idx].lfo[i].wtSust);
+                }
+                envelopePtr[i]->start();
+                setSyncParamsLFO(i);
             }
-            envelopePtr[i]->start();
-            setSyncParamsLFO(i);
         }
     }
     //*******
@@ -248,15 +309,18 @@ AUDIO_CORE_RAM void playerEngine::noteOffFade()
     }
     // lfo ma dzialac do konca fade
 
-    for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
+    if (!DrumRack::isGlobalDrumRack(currentInstrument_idx))
     {
-        uint8_t curLoop = mtProject.instrument[currentInstrument_idx].envelope[i].loop;
-        if ((curLoop == 0 || curLoop == 2) &&
-            (!trackControlParameter[(int)controlType::sequencerMode][i]) &&
-            (!trackControlParameter[(int)controlType::sequencerMode2][i]) &&
-            (!trackControlParameter[(int)controlType::performanceMode][i]))
+        for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
         {
-            envelopePtr[i]->stop();
+            uint8_t curLoop = mtProject.instrument[currentInstrument_idx].envelope[i].loop;
+            if ((curLoop == 0 || curLoop == 2) &&
+                (!trackControlParameter[(int)controlType::sequencerMode][i]) &&
+                (!trackControlParameter[(int)controlType::sequencerMode2][i]) &&
+                (!trackControlParameter[(int)controlType::performanceMode][i]))
+            {
+                envelopePtr[i]->stop();
+            }
         }
     }
 
@@ -267,6 +331,7 @@ AUDIO_CORE_RAM void playerEngine::noteOffCut()
 {
     //	__disable_irq();
     AudioNoInterrupts();
+    DrumRack::sendBus().clearVoice(nChannel);
     // caly voice i automatyka zabijane
     for (int channel = 0; channel < playMemPtr.size(); channel++)
     {
@@ -299,6 +364,13 @@ AUDIO_CORE_RAM void playerEngine::noteOffOrdinary()
     for (int channel = 0; channel < playMemPtr.size(); channel++)
     {
         playMemPtr[channel]->envelopeNoteOff();
+    }
+
+    if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+    {
+        // Pad amp envelope handles release; no sample-slot LFO/env side effects.
+        AudioInterrupts();
+        return;
     }
 
     uint8_t curAmpLoop = mtProject.instrument[currentInstrument_idx].envelope[envAmp].loop;
@@ -385,15 +457,21 @@ AUDIO_CORE_RAM void playerEngine::noteOffOrdinary()
 //************************************* handle noteOn
 AUDIO_CORE_RAM void playerEngine::handleInitNoteOnAllEnvelopes()
 {
+    const bool holdKitFilterEnvelope =
+      DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+      DrumRack::kitHasOtherActiveVoices(DrumRack::poolIdxFromGlobal(currentInstrument_idx), nChannel);
+
     // envAmp killuje sie wewnetrznie
     for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
     {
+        if (holdKitFilterEnvelope && i == envCutoff)
+            continue;
         envelopePtr[i]->kill();
     }
 
     handleInitNoteOnEnvelope(envAmp);
 
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (DrumRack::busFilterEnable(currentInstrument_idx) && !holdKitFilterEnvelope)
     {
         handleInitNoteOnEnvelope(envCutoff);
     }
@@ -414,21 +492,26 @@ AUDIO_CORE_RAM void playerEngine::handleInitNoteOnAllEnvelopes()
 
 AUDIO_CORE_RAM void playerEngine::handleNoteOnFilter()
 {
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    const bool holdKitFilter =
+      DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+      DrumRack::kitHasOtherActiveVoices(DrumRack::poolIdxFromGlobal(currentInstrument_idx), nChannel);
+
+    if (DrumRack::busFilterEnable(currentInstrument_idx))
     {
         filterConnect();
 
         for (int channel = 0; channel < (int)filterPtr.size(); channel++)
         {
-            filterPtr[channel]->resonance(mtProject.instrument[currentInstrument_idx].resonance +
+            filterPtr[channel]->resonance(DrumRack::busResonance(currentInstrument_idx) +
                                           RESONANCE_OFFSET);
         }
-        if (!isActiveEnvelope(envCutoff))
-            modCutoff(mtProject.instrument[currentInstrument_idx].cutOff);
+        // Later kit hits keep the shared bus filter state; do not snap cutoff back.
+        if (!holdKitFilter && !isActiveEnvelope(envCutoff))
+            modCutoff(DrumRack::busCutOff(currentInstrument_idx));
 
-        changeFilterType(mtProject.instrument[currentInstrument_idx].filterType);
+        changeFilterType(DrumRack::busFilterType(currentInstrument_idx));
     }
-    else if (!mtProject.instrument[currentInstrument_idx].filterEnable)
+    else if (!DrumRack::busFilterEnable(currentInstrument_idx))
     {
         filterDisconnect();
     }
@@ -436,7 +519,7 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnFilter()
     for (int channel = 0; channel < (int)filterPtr.size(); channel++)
     {
         filterPtr[channel]->setOverdriveAmount(
-          mtProject.instrument[currentInstrument_idx].overdrive);
+          DrumRack::busOverdrive(currentInstrument_idx));
     }
 }
 
@@ -479,7 +562,7 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnPanning()
 
 void playerEngine::handleNoteOnBitCrusher()
 {
-    modBitDepth(mtProject.instrument[currentInstrument_idx].bitDepth);
+    modBitDepth(DrumRack::busBitDepth(currentInstrument_idx));
 }
 
 AUDIO_CORE_RAM void playerEngine::handleNoteOnDelaySend()
@@ -517,6 +600,25 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnReverbSend()
 
 void playerEngine::handleInitNoteOnAmpEnvelope()
 {
+    if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+    {
+        const uint8_t padIdx = drumRackNoteToPad(
+          currentNote, DrumRack::firstNoteOfGlobal(currentInstrument_idx));
+        const strDrumRackPad& pad = mtProject.drumRackInstrument[DrumRack::poolIdxFromGlobal(currentInstrument_idx)].rack.pads[padIdx];
+        envelopeGenerator::strEnv padEnv = envelopeGenerator::s_defaultEnvelope;
+        padEnv.enable = 1;
+        padEnv.loop = 0;
+        padEnv.delay = 0;
+        padEnv.attack = pad.attack;
+        padEnv.hold = 0;
+        padEnv.decay = pad.decay;
+        padEnv.sustain = pad.sustain;
+        padEnv.release = pad.release;
+        padEnv.amount = 1.0f;
+        initEnvelopesParameters(envAmp, &padEnv);
+        return;
+    }
+
     if (mtProject.instrument[currentInstrument_idx].envelope[envAmp].enable)
     {
         uint8_t curAmpLoop = mtProject.instrument[currentInstrument_idx].envelope[envAmp].loop;
@@ -549,6 +651,10 @@ void playerEngine::handleInitNoteOnEnvelope(uint8_t n)
     {
         handleInitNoteOnAmpEnvelope();
     }
+    else if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+    {
+        currentEnvelopeModification[n] = 0;
+    }
     else
     {
         currentEnvelopeModification[n] = 0;
@@ -579,6 +685,10 @@ void playerEngine::handleInitFxNoteOnEnvelope(uint8_t n)
     if (n == envAmp)
     {
         handleInitFxNoteOnAmpEnvelope();
+    }
+    else if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+    {
+        return;
     }
     else
     {
@@ -644,8 +754,9 @@ void playerEngine::handleInitFxNoteOnAmpEnvelope()
     {
         handleInitNoteOnAmpEnvelope();
     }
-    if (trackControlParameter[(int)controlType::sequencerMode][(int)parameterList::ampAttack] ||
-        trackControlParameter[(int)controlType::sequencerMode2][(int)parameterList::ampAttack])
+    if (!DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+        (trackControlParameter[(int)controlType::sequencerMode][(int)parameterList::ampAttack] ||
+         trackControlParameter[(int)controlType::sequencerMode2][(int)parameterList::ampAttack]))
     {
         uint8_t curAmpLoop = mtProject.instrument[currentInstrument_idx].envelope[envAmp].loop;
         for (int channel = 0; channel < (int)playMemPtr.size(); channel++)
@@ -671,14 +782,20 @@ void playerEngine::handleInitFxNoteOnAmpEnvelope()
 }
 AUDIO_CORE_RAM void playerEngine::handleInitFxNoteOnAllEnvelopes()
 {
+    const bool holdKitFilterEnvelope =
+      DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+      DrumRack::kitHasOtherActiveVoices(DrumRack::poolIdxFromGlobal(currentInstrument_idx), nChannel);
+
     for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
     {
+        if (holdKitFilterEnvelope && i == envCutoff)
+            continue;
         envelopePtr[i]->kill();
     }
 
     handleInitFxNoteOnEnvelope(envAmp);
 
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (DrumRack::busFilterEnable(currentInstrument_idx) && !holdKitFilterEnvelope)
     {
         handleInitFxNoteOnEnvelope(envCutoff);
     }
@@ -700,12 +817,16 @@ AUDIO_CORE_RAM void playerEngine::handleInitFxNoteOnAllEnvelopes()
 
 AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
 {
+    const bool holdKitFilter =
+      DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+      DrumRack::kitHasOtherActiveVoices(DrumRack::poolIdxFromGlobal(currentInstrument_idx), nChannel);
+
     //***** resonance
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (DrumRack::busFilterEnable(currentInstrument_idx))
     {
         for (int channel = 0; channel < filterPtr.size(); channel++)
         {
-            filterPtr[channel]->resonance(mtProject.instrument[currentInstrument_idx].resonance +
+            filterPtr[channel]->resonance(DrumRack::busResonance(currentInstrument_idx) +
                                           RESONANCE_OFFSET);
         }
     }
@@ -727,13 +848,13 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
     }
     else
     {
-        if (mtProject.instrument[currentInstrument_idx].filterEnable)
+        if (DrumRack::busFilterEnable(currentInstrument_idx))
         {
             filterConnect();
-            if (!isActiveEnvelope(envCutoff))
-                modCutoff(mtProject.instrument[currentInstrument_idx].cutOff);
+            if (!holdKitFilter && !isActiveEnvelope(envCutoff))
+                modCutoff(DrumRack::busCutOff(currentInstrument_idx));
         }
-        else if (!mtProject.instrument[currentInstrument_idx].filterEnable)
+        else if (!DrumRack::busFilterEnable(currentInstrument_idx))
             filterDisconnect();
     }
     //*****
@@ -751,9 +872,9 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
     }
     else
     {
-        if (mtProject.instrument[currentInstrument_idx].filterEnable)
+        if (DrumRack::busFilterEnable(currentInstrument_idx))
         {
-            changeFilterType(mtProject.instrument[currentInstrument_idx].filterType);
+            changeFilterType(DrumRack::busFilterType(currentInstrument_idx));
         }
     }
     //*****
@@ -771,7 +892,7 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
     }
     else
     {
-        modOverdrive(mtProject.instrument[currentInstrument_idx].overdrive);
+        modOverdrive(DrumRack::busOverdrive(currentInstrument_idx));
     }
 }
 
@@ -800,7 +921,7 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnBitDepth()
     }
     else
     {
-        modBitDepth(mtProject.instrument[currentInstrument_idx].bitDepth);
+        modBitDepth(DrumRack::busBitDepth(currentInstrument_idx));
     }
 }
 

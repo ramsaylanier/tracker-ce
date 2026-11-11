@@ -4,6 +4,7 @@
 #include "WavWriter.h"
 #include "config.h"
 #include "display.h"
+#include "drumRackCheck.h"
 #include "interfaceDefs.h"
 
 #include <SDL.h>
@@ -112,13 +113,14 @@ void printUsage(const char* argv0)
 {
     std::printf(
       "Usage: %s [--sd DIR] [--wav OUT.wav] [--script FILE] [--live-script FILE] [--scale N] "
-      "[--headless]\n"
+      "[--headless] [--drum-rack-check]\n"
       "  --sd DIR         SD card root folder (default ./sdcard)\n"
       "  --wav OUT.wav    Record master audio\n"
       "  --script FILE    Headless button script (virtual time)\n"
       "  --live-script FILE  Script with real SDL audio thread\n"
       "  --scale N        Window scale (default 1)\n"
-      "  --headless       No window (implied by --script)\n",
+      "  --headless       No window (implied by --script)\n"
+      "  --drum-rack-check  Verify drum-rack bus membership / pools / sidecar load\n",
       argv0);
 }
 
@@ -285,6 +287,7 @@ int main(int argc, char** argv)
     std::string scriptPath;
     bool liveScript = false;
     bool songStress = false;
+    bool drumRackCheck = false;
     int scale = 1;
     bool headless = false;
 
@@ -312,6 +315,11 @@ int main(int argc, char** argv)
             headless = true;
         else if (std::strcmp(argv[i], "--song-stress") == 0)
             songStress = true;
+        else if (std::strcmp(argv[i], "--drum-rack-check") == 0)
+        {
+            drumRackCheck = true;
+            headless = true;
+        }
         else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0)
         {
             printUsage(argv[0]);
@@ -351,6 +359,13 @@ int main(int argc, char** argv)
         startDisplay(&platform);
     tracker->init(&platform);
     std::fprintf(stderr, "tracker-host: sdl-audio-lock + display-budget (2026-11-08d)\n");
+
+    if (drumRackCheck)
+    {
+        const int rc = runDrumRackHostCheck(platform);
+        wav.close();
+        return rc;
+    }
 
     if (!scriptPath.empty() && !liveScript)
     {

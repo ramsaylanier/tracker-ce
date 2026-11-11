@@ -381,6 +381,8 @@ void cInstrumentEditor::showTitleBar()
             break;
         }
 #endif
+        case mtInstEditModeDrumRackPads: label = "Drum Rack Kit 1/2"; break;
+        case mtInstEditModeDrumRackBus: label = "Drum Rack Bus 2/2"; break;
         default: label = "Instrument Parameters"; break;
     }
 
@@ -1167,8 +1169,11 @@ void cInstrumentEditor::showInstrumentMidiParams()
 //==============================================================================================================
 void cInstrumentEditor::activateLabelsBorder()
 {
-    if (selectedPlace[mode] > frameData.placesCount - 1)
+    if (frameData.placesCount == 0 || selectedPlace[mode] > frameData.placesCount - 1)
+    {
+        display.setControlHide(frameControl);
         return;
+    }
 
     display.setControlValue(frameControl, selectedPlace[mode]);
     display.setControlShow(frameControl);
@@ -1566,46 +1571,50 @@ void cInstrumentEditor::showParamsCC(uint8_t index)
 
 void cInstrumentEditor::showParamsVolume()
 {
-    float volumeInDecybels = calcInstrumentVolumeDecybelValue(editorInstrument->volume);
+    const uint8_t volume = editorInstrument->volume;
+    float volumeInDecybels = calcInstrumentVolumeDecybelValue(volume);
 
     sprintf(labelText[0], "%0.02f dB", volumeInDecybels);
 
     display.setControlText2(label[0], labelText[0]);
     display.refreshControl(label[0]);
 
-    display.setControlValue(barControl[0], editorInstrument->volume);
+    display.setControlValue(barControl[0], volume);
     display.refreshControl(barControl[0]);
 }
 
 void cInstrumentEditor::showParamsPanning()
 {
-    sprintf(labelText[1], "%d", editorInstrument->panning - 50);
+    const int16_t panning = editorInstrument->panning;
+    sprintf(labelText[1], "%d", panning - 50);
 
     display.setControlText2(label[1], labelText[1]);
     display.refreshControl(label[1]);
 
-    display.setControlValue(barControl[1], editorInstrument->panning * 2 - 100);
+    display.setControlValue(barControl[1], panning * 2 - 100);
     display.refreshControl(barControl[1]);
 }
 
 void cInstrumentEditor::showParamsTune()
 {
-    sprintf(labelText[2], "%d", editorInstrument->tune);
+    const int8_t tune = editorInstrument->tune;
+    sprintf(labelText[2], "%d", tune);
 
     display.setControlText2(label[2], labelText[2]);
     display.refreshControl(label[2]);
 
-    display.setControlValue(barControl[2], (editorInstrument->tune * 100) / 24);
+    display.setControlValue(barControl[2], (tune * 100) / 24);
     display.refreshControl(barControl[2]);
 }
 
 void cInstrumentEditor::showParamsFineTune()
 {
-    sprintf(labelText[3], "%d", editorInstrument->fineTune);
+    const int8_t fineTune = editorInstrument->fineTune;
+    sprintf(labelText[3], "%d", fineTune);
     display.setControlText2(label[3], labelText[3]);
     display.refreshControl(label[3]);
 
-    display.setControlValue(barControl[3], editorInstrument->fineTune);
+    display.setControlValue(barControl[3], fineTune);
     display.refreshControl(barControl[3]);
 }
 
@@ -1825,6 +1834,52 @@ void cInstrumentEditor::refreshFramePosition()
             break;
         }
 #endif
+        case mtInstEditModeDrumRackPads:
+        {
+            if (drumRackPadEnvPage)
+            {
+                frameData.placesCount = 6;
+                frameData.startPlace = 0;
+                frameData.places[0] = &framesPlaces[0][0];
+                frameData.places[1] = &framesPlaces[1][0];
+                frameData.places[2] = &framesPlaces[2][0];
+                frameData.places[3] = &framesPlaces[3][0];
+                frameData.places[4] = &framesPlaces[4][0];
+                frameData.places[5] = &framesPlaces[5][0];
+            }
+            else if (drumRackPadDetailPage)
+            {
+                frameData.placesCount = 6;
+                frameData.startPlace = 0;
+                frameData.places[0] = &framesPlaces[0][0];
+                frameData.places[1] = &framesPlaces[1][0];
+                frameData.places[2] = &framesPlaces[2][0];
+                frameData.places[3] = &framesPlaces[3][0];
+                frameData.places[4] = &framesPlaces[4][0];
+                frameData.places[5] = &framesPlaces[5][0];
+            }
+            else
+            {
+                // Kit overview: Start Note on soft key 6 (encoder defaults to sample).
+                frameData.placesCount = 1;
+                frameData.startPlace = 0;
+                frameData.places[0] = &framesPlaces[6][0];
+            }
+            break;
+        }
+        case mtInstEditModeDrumRackBus:
+        {
+            frameData.placesCount = 7;
+            frameData.startPlace = 0;
+            frameData.places[0] = &framesPlaces[0][0];
+            frameData.places[1] = &framesPlaces[1][0];
+            frameData.places[2] = &framesPlaces[2][0];
+            frameData.places[3] = &framesPlaces[3][0];
+            frameData.places[4] = &framesPlaces[4][0];
+            frameData.places[5] = &framesPlaces[5][0];
+            frameData.places[6] = &framesPlaces[6][0];
+            break;
+        }
         default: break;
     }
     activateLabelsBorder();

@@ -2,8 +2,12 @@
 #include "fileManagerDefs.h"
 #include "sampleImporter/sampleImporter.h"
 
+#include "DrumRack.h"
+#include "core/interface.h"
 #include "core/interfaceMenuPopup.h"
 #include "core/interfacePopups.h"
+#include "instrumentEditor/instrumentEditor.h"
+#include "mtSequencer.h"
 
 #include "core/graphicProcessing.h"
 #include "mtAudioEngine.h"
@@ -89,6 +93,11 @@ static void functReplaceInstrumentConfirm();
 static void functReplaceInstrumentDeny();
 static void functSelectPreviewVolume(uint8_t state);
 
+static void functToggleRacksPage();
+static void functRacksNew();
+static void functRacksOpen();
+static void functRacksClear();
+
 void cSampleImporter::update()
 {
     uint8_t managerStatus = newFileManager.getStatus();
@@ -98,13 +107,20 @@ void cSampleImporter::update()
         locationExplorerCount =
           newFileManager.getBrowsedFilesList(&explorerNames, &currentFolderMemoryFileUsage);
 
-        showFilesTree();
-        handleMemoryBar();
-
-        cancelSelect(listFiles);
-        setSelect();
-
-        refreshActionButtons();
+        if (!racksPage)
+        {
+            showFilesTree();
+            handleMemoryBar();
+            cancelSelect(listFiles);
+            setSelect();
+            refreshActionButtons();
+        }
+        else
+        {
+            showRacksScreen();
+            setRacksScreenFunct();
+            showInstrumentsList();
+        }
 
         ip->unblockAllInputs();
 
@@ -175,9 +191,17 @@ void cSampleImporter::update()
         {
             listInstrumentSlots();
             refreshInstrumentsList();
-            handleMemoryBar();
-
-            refreshActionButtons();
+            if (racksPage)
+            {
+                showRacksScreen();
+                setRacksScreenFunct();
+                showInstrumentsList();
+            }
+            else
+            {
+                handleMemoryBar();
+                refreshActionButtons();
+            }
 
             ip->unblockAllInputs();
 
@@ -241,13 +265,43 @@ void cSampleImporter::update()
     }
 }
 
+uint8_t cSampleImporter::getCurrentModeIdx()
+{
+    return racksPage ? 1 : 0;
+}
+
+uint8_t cSampleImporter::menuModeCount()
+{
+    return 2;
+}
+
+uint32_t cSampleImporter::menuModeOption(uint8_t index)
+{
+    // High byte selects page so low-byte slot focus (1..48) from Pattern/Rec still works.
+    return index == 0 ? 0 : (1u << 8);
+}
+
 void cSampleImporter::start(uint32_t options)
 {
     moduleRefresh = 1;
 
-    if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount)
+    const uint8_t page = (options >> 8) & 0xff;
+    if (page == 1)
+        racksPage = true;
+    else if (options == 0 || page == 0)
+        racksPage = false;
+
+    if (racksPage)
     {
-        // mtProject.values.lastUsedInstrument = 0;
+        if (isDrumRackInstrument(mtProject.values.lastUsedInstrument))
+            selectedSlot = (uint8_t)drumRackInstrumentToIdx(mtProject.values.lastUsedInstrument);
+        else
+            selectedSlot = 0;
+        if (selectedSlot >= kDrumRackInstrumentsCount)
+            selectedSlot = 0;
+    }
+    else if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount)
+    {
         selectedSlot = 0;
     }
     else
@@ -255,7 +309,7 @@ void cSampleImporter::start(uint32_t options)
         selectedSlot = mtProject.values.lastUsedInstrument;
     }
 
-    // focus na wybranym insturmencie
+    // focus na wybranym insturmencie (low byte = slot index + 1)
     if (options & 0xff)
     {
         selectedFile = 0; // slabe takie ustawianie tu ale przy imporcie zaznaczenia zabezpiecza
@@ -263,14 +317,24 @@ void cSampleImporter::start(uint32_t options)
         selectedPlace = 1;
         selectedSlot = (options & 0xff) - 1;
 
-        if (selectedSlot >= kSampleInstrumentsCount)
-            selectedSlot = 0;
-
-        mtProject.values.lastUsedInstrument = selectedSlot;
+        if (racksPage)
+        {
+            if (selectedSlot >= kDrumRackInstrumentsCount)
+                selectedSlot = 0;
+            if (mtProject.drumRackInstrument[selectedSlot].isActive)
+                mtProject.values.lastUsedInstrument =
+                  (uint8_t)drumRackIdxToInstrument(selectedSlot);
+        }
+        else
+        {
+            if (selectedSlot >= kSampleInstrumentsCount)
+                selectedSlot = 0;
+            mtProject.values.lastUsedInstrument = selectedSlot;
+        }
     }
 
     // przeladuj pierwszy raz xxx trzeba to popawic
-    if (locationExplorerCount == 0 || interfaceGlobals.refreshFileExplorer)
+    if (!racksPage && (locationExplorerCount == 0 || interfaceGlobals.refreshFileExplorer))
     {
         interfaceGlobals.refreshFileExplorer = false;
 
@@ -279,7 +343,7 @@ void cSampleImporter::start(uint32_t options)
             SI->ip->blockAllInputs();
         }
     }
-    else
+    else if (!racksPage)
     {
         showFilesTree();
         handleMemoryBar();
@@ -309,8 +373,16 @@ void cSampleImporter::start(uint32_t options)
 
     ip->setButtonObj(interfaceButtonMiniMenu, functMenu);
 
-    showDefaultScreen();
-    setDefaultScreenFunct();
+    if (racksPage)
+    {
+        showRacksScreen();
+        setRacksScreenFunct();
+    }
+    else
+    {
+        showDefaultScreen();
+        setDefaultScreenFunct();
+    }
 
     cancelSelect(listInstruments);
 
@@ -350,12 +422,9 @@ void cSampleImporter::setDefaultScreenFunct()
     ip->setButtonObj(interfaceButtonInsert, buttonPress, functEnter);
 
     ip->setButtonObj(interfaceButtonCopy, buttonPress, functCopyPaste);
-    //	ip->setButtonObj(interfaceButtonPaste, buttonPress, functPaste);
 
-    // ip->setButtonObj(interfaceButton0, buttonPress, functChangeFolder);
-    // ip->setButtonObj(interfaceButton1, buttonPress, functChangeFolder);
-
-    ip->setButtonObj(interfaceButton0, buttonPress, functEnter);
+    // Soft key 0 opens the Racks manager page (Insert still performs Enter/Browse).
+    ip->setButtonObj(interfaceButton0, buttonPress, functToggleRacksPage);
     ip->setButtonObj(interfaceButton1, buttonPress, functInstrumentAddNext); // 3
     commonPreviewButton = interfaceButton2;
     ip->setButtonObj(commonPreviewButton, functPreviewFile);      // 4
@@ -365,15 +434,156 @@ void cSampleImporter::setDefaultScreenFunct()
     ip->setButtonObj(interfaceButton6, functSelectPreviewVolume);
     ip->setButtonObj(interfaceButton7, buttonPress, functMemoryModeOrToggle);
 
-    // ip->setButtonObj(interfaceButton4, buttonPress, functChangeInstrument);
-    // ip->setButtonObj(interfaceButton5, buttonPress, functInstrumentDelete);
-
-    // ip->setButtonObj(interfaceButton6, buttonPress, functChangeInstrument);
-    // ip->setButtonObj(interfaceButton7, buttonPress, functChangeInstrument);
-
     ip->setButtonObj(interfaceButtonMiniMiddle, functMiniMiddle);
 
     ip->setPadsGlobal(functPads);
+}
+
+void cSampleImporter::setRacksScreenFunct()
+{
+    ip->setPotObj(interfacePot0, functEncoder);
+    ip->clearButtonsRange(interfaceButton0, interfaceButton7);
+
+    ip->setButtonObj(interfaceButtonPlay, buttonPress, functPlayAction);
+    ip->setButtonObj(interfaceButtonLeft, buttonPress, functLeft);
+    ip->setButtonObj(interfaceButtonRight, buttonPress, functRight);
+    ip->setButtonObj(interfaceButtonUp, buttonPress, functUp);
+    ip->setButtonObj(interfaceButtonDown, buttonPress, functDown);
+    ip->clearButton(interfaceButtonDelete);
+    ip->clearButton(interfaceButtonCopy);
+    ip->clearButton(interfaceButtonInsert);
+
+    ip->setButtonObj(interfaceButton0, buttonPress, functRacksNew);
+    ip->setButtonObj(interfaceButton1, buttonPress, functRacksOpen);
+    ip->setButtonObj(interfaceButton2, buttonPress, functRacksClear);
+    ip->setButtonObj(interfaceButton3, buttonPress, functRename);
+    ip->clearButton(interfaceButton4);
+    ip->clearButton(interfaceButton5);
+    ip->clearButton(interfaceButton6);
+    ip->setButtonObj(interfaceButton7, buttonPress, functToggleRacksPage);
+
+    ip->setButtonObj(interfaceButtonShift, functShift);
+    ip->setButtonObj(interfaceButtonMiniMiddle, functMiniMiddle);
+    ip->setPadsGlobal(functPads);
+
+    selectedPlace = 1;
+}
+
+void cSampleImporter::toggleRacksPage()
+{
+    racksPage = !racksPage;
+    playFromPads(INTERFACE_BUTTON_PREVIEW, buttonRelease, -1);
+    mtPopups.hideInfoPopup();
+
+    if (racksPage)
+    {
+        if (isDrumRackInstrument(mtProject.values.lastUsedInstrument))
+            selectedSlot = (uint8_t)drumRackInstrumentToIdx(mtProject.values.lastUsedInstrument);
+        else
+            selectedSlot = 0;
+        if (selectedSlot >= kDrumRackInstrumentsCount)
+            selectedSlot = 0;
+    }
+    else
+    {
+        if (mtProject.values.lastUsedInstrument < kSampleInstrumentsCount)
+            selectedSlot = mtProject.values.lastUsedInstrument;
+        else
+            selectedSlot = 0;
+    }
+
+    listInstrumentSlots();
+    if (racksPage)
+    {
+        showRacksScreen();
+        setRacksScreenFunct();
+    }
+    else
+    {
+        showDefaultScreen();
+        setDefaultScreenFunct();
+        showFilesTree();
+        handleMemoryBar();
+    }
+    showInstrumentsList();
+    activateLabelsBorder();
+}
+
+bool cSampleImporter::createDrumRackOnSelectedSlot()
+{
+    int poolIdx = (int)selectedSlot;
+    if (poolIdx >= kDrumRackInstrumentsCount ||
+        mtProject.drumRackInstrument[poolIdx].isActive)
+    {
+        poolIdx = DrumRack::findFirstInactivePoolIdx();
+    }
+    if (poolIdx < 0)
+    {
+        mtPopups.show(0, "Rack pool full (max 8)");
+        return false;
+    }
+
+    if (!DrumRack::activatePoolSlot((uint8_t)poolIdx))
+        return false;
+
+    selectedSlot = (uint8_t)poolIdx;
+    mtProject.values.lastUsedInstrument = (uint8_t)drumRackIdxToInstrument(poolIdx);
+    DrumRack::saveSidecar((uint8_t)poolIdx, newFileManager.getFileSystem());
+
+    listInstrumentSlots();
+    showInstrumentsList();
+    openSelectedDrumRackEditor();
+    return true;
+}
+
+void cSampleImporter::openSelectedDrumRackEditor()
+{
+    if (selectedSlot >= kDrumRackInstrumentsCount ||
+        !mtProject.drumRackInstrument[selectedSlot].isActive)
+    {
+        mtPopups.show(0, "Select a Drum Rack");
+        return;
+    }
+
+    mtProject.values.lastUsedInstrument = (uint8_t)drumRackIdxToInstrument(selectedSlot);
+    uint8_t button = interfaceButtonParams;
+    uint32_t options = 1; // Pads page
+    eventFunct(eventSwitchModule, this, &button, &options);
+}
+
+void cSampleImporter::clearSelectedDrumRack()
+{
+    if (selectedSlot >= kDrumRackInstrumentsCount ||
+        !mtProject.drumRackInstrument[selectedSlot].isActive)
+    {
+        mtPopups.show(0, "Select a Drum Rack");
+        return;
+    }
+
+    playFromPads(INTERFACE_BUTTON_PREVIEW, buttonRelease, -1);
+    DrumRack::deactivatePoolSlot(selectedSlot, newFileManager.getFileSystem());
+    listInstrumentSlots();
+    showInstrumentsList();
+}
+
+static void functToggleRacksPage()
+{
+    SI->toggleRacksPage();
+}
+
+static void functRacksNew()
+{
+    SI->createDrumRackOnSelectedSlot();
+}
+
+static void functRacksOpen()
+{
+    SI->openSelectedDrumRackEditor();
+}
+
+static void functRacksClear()
+{
+    SI->clearSelectedDrumRack();
 }
 
 //==============================================================================================================
@@ -903,6 +1113,13 @@ static void functEncoder(int16_t value)
         return;
     }
 
+    if (SI->racksPage)
+    {
+        SI->selectedPlace = 1;
+        SI->changeInstrumentSelection(interfaceGlobals.invertValForList ? -value : value);
+        return;
+    }
+
     switch (SI->selectedPlace)
     {
         case 0: SI->changeFileSelection(interfaceGlobals.invertValForList ? -value : value); break;
@@ -929,14 +1146,30 @@ static void functRename()
     {
         return;
     }
-    if (mtProject.instrument[SI->selectedSlot].isActive != 1)
+
+    if (SI->racksPage)
     {
-        return;
+        if (SI->selectedSlot >= kDrumRackInstrumentsCount ||
+            !mtProject.drumRackInstrument[SI->selectedSlot].isActive)
+        {
+            mtPopups.show(0, "Select a Drum Rack");
+            return;
+        }
+
+        SI->playFromPads(INTERFACE_BUTTON_PREVIEW, buttonRelease, -1);
+        SI->keyboardManager.fillName(mtProject.drumRackInstrument[SI->selectedSlot].name);
+    }
+    else
+    {
+        if (mtProject.instrument[SI->selectedSlot].isActive != 1)
+        {
+            return;
+        }
+
+        SI->playFromPads(INTERFACE_BUTTON_PREVIEW, buttonRelease, -1);
+        SI->keyboardManager.fillName(mtProject.instrument[SI->selectedSlot].sample.file_name);
     }
 
-    SI->playFromPads(INTERFACE_BUTTON_PREVIEW, buttonRelease, -1);
-
-    SI->keyboardManager.fillName(mtProject.instrument[SI->selectedSlot].sample.file_name);
     SI->keyboardManager.activateKeyboard(SAMPLE_NAME_SIZE);
 
     SI->ip->clearButtonsRange(interfaceButton0, interfaceButton7);
@@ -948,6 +1181,26 @@ static void functRename()
     SI->ip->setButtonObj(interfaceButton7, buttonPress, functConfirmRename);
 
     SI->showRenameKeyboard();
+}
+
+static void restoreScreenAfterRename()
+{
+    SI->listInstrumentSlots();
+    SI->showInstrumentsList();
+    SI->activateLabelsBorder();
+    SI->keyboardManager.deactivateKeyboard();
+
+    if (SI->racksPage)
+    {
+        SI->showRacksScreen();
+        SI->setRacksScreenFunct();
+        return;
+    }
+
+    SI->showFileList();
+    SI->handleMemoryBar();
+    SI->setDefaultScreenFunct();
+    SI->showDefaultScreen();
 }
 
 static void functConfirmRename()
@@ -970,47 +1223,30 @@ static void functConfirmRename()
 
         if (allow)
         {
-            strncpy(
-              mtProject.instrument[SI->selectedSlot].sample.file_name, localName, SAMPLE_NAME_SIZE);
+            if (SI->racksPage)
+            {
+                strncpy(mtProject.drumRackInstrument[SI->selectedSlot].name,
+                        localName,
+                        SAMPLE_NAME_SIZE);
+                mtProject.drumRackInstrument[SI->selectedSlot].name[SAMPLE_NAME_SIZE] = 0;
+                DrumRack::saveSidecar(SI->selectedSlot, newFileManager.getFileSystem());
+            }
+            else
+            {
+                strncpy(mtProject.instrument[SI->selectedSlot].sample.file_name,
+                        localName,
+                        SAMPLE_NAME_SIZE);
+                newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
+            }
 
-            SI->showFileList();
-
-            SI->listInstrumentSlots();
-            SI->showInstrumentsList();
-
-            SI->handleMemoryBar();
-
-            SI->activateLabelsBorder();
-
-            SI->setDefaultScreenFunct();
-            SI->showDefaultScreen();
-
-            // SI->displayDelete(SI->selectedPlace);
-
-            //	fileManager.setInstrumentChangeFlag(mtProject.values.lastUsedInstrument);
-            newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
-
-            SI->keyboardManager.deactivateKeyboard();
+            restoreScreenAfterRename();
         }
     }
 }
 
 static void functCancelRename()
 {
-    SI->showFileList();
-
-    SI->listInstrumentSlots();
-    SI->showInstrumentsList();
-
-    SI->handleMemoryBar();
-
-    SI->activateLabelsBorder();
-    SI->keyboardManager.deactivateKeyboard();
-
-    SI->setDefaultScreenFunct();
-    SI->showDefaultScreen();
-
-    // SI->displayDelete(SI->selectedPlace);
+    restoreScreenAfterRename();
 }
 
 static void functDeleteUnused()
@@ -1174,6 +1410,13 @@ static void functLeft()
         return;
     }
 
+    if (SI->racksPage)
+    {
+        SI->selectedPlace = 1;
+        SI->activateLabelsBorder();
+        return;
+    }
+
     SI->playFromPads(INTERFACE_BUTTON_PREVIEW, buttonRelease, -1);
 
     if (SI->selectedPlace == 1)
@@ -1206,6 +1449,13 @@ static void functRight()
     if (SI->keyboardManager.getState())
     {
         SI->keyboardManager.makeMove('d');
+        return;
+    }
+
+    if (SI->racksPage)
+    {
+        SI->selectedPlace = 1;
+        SI->activateLabelsBorder();
         return;
     }
 
@@ -1351,21 +1601,35 @@ uint8_t cSampleImporter::changeInstrumentSelection(int16_t value)
             selectionTab[listInstruments][selectedSlot] = 1;
             selectionLength[listInstruments]++;
         }
-        selectedSlot = handleSelecting(selectedSlot, 48, value, 0);
+        selectedSlot = handleSelecting(selectedSlot, racksPage ? kDrumRackInstrumentsCount : 48, value, 0);
     }
     else
     {
-        selectedSlot = clamp(selectedSlot + value, 0, kSampleInstrumentsCount - 1);
+        selectedSlot = clamp(selectedSlot + value,
+                             0,
+                             (racksPage ? kDrumRackInstrumentsCount : kSampleInstrumentsCount) - 1);
         memset(&selectionTab[listInstruments][0], 0, SI->maxListLength);
         selectionLength[listInstruments] = 0;
     }
 
-    mtProject.values.lastUsedInstrument = selectedSlot;
+    if (racksPage)
+    {
+        if (mtProject.drumRackInstrument[selectedSlot].isActive)
+            mtProject.values.lastUsedInstrument =
+              (uint8_t)drumRackIdxToInstrument(selectedSlot);
+    }
+    else
+    {
+        mtProject.values.lastUsedInstrument = selectedSlot;
+    }
 
     display.setControlValue(instrumentListControl, selectedSlot);
     display.refreshControl(instrumentListControl);
 
-    refreshGuiAfterDelay();
+    if (racksPage)
+        refreshRacksActionButtons();
+    else
+        refreshGuiAfterDelay();
 
     if (SI->buttons->isButtonPressed(commonPreviewButton))
     {
@@ -1403,6 +1667,12 @@ void cSampleImporter::refreshGuiAfterDelay()
 
 void cSampleImporter::refreshActionButtons()
 {
+    if (racksPage)
+    {
+        refreshRacksActionButtons();
+        return;
+    }
+
     showAddOrEnter(buttons->isButtonPressed(interfaceButtonShift));
 
     renameColorControl();
@@ -1486,6 +1756,30 @@ void cSampleImporter::importSamples()
 
 void cSampleImporter::listInstrumentSlots()
 {
+    if (racksPage)
+    {
+        for (uint8_t i = 0; i < kDrumRackInstrumentsCount; i++)
+        {
+            if (mtProject.drumRackInstrument[i].isActive)
+            {
+                snprintf(&interfaceGlobals.intrumentsNames[i][0],
+                         sizeof(interfaceGlobals.intrumentsNames[i]),
+                         "%u. %s",
+                         (unsigned)(i + 1),
+                         mtProject.drumRackInstrument[i].name);
+            }
+            else
+            {
+                snprintf(&interfaceGlobals.intrumentsNames[i][0],
+                         sizeof(interfaceGlobals.intrumentsNames[i]),
+                         "%u.",
+                         (unsigned)(i + 1));
+            }
+            interfaceGlobals.ptrIntrumentsNames[i] = &interfaceGlobals.intrumentsNames[i][0];
+        }
+        return;
+    }
+
     for (uint8_t i = 0; i < kSampleInstrumentsCount; i++)
     {
         if (mtProject.instrument[i].isActive)
@@ -2195,6 +2489,12 @@ static void functMiniMiddle(uint8_t state)
     if (SI->keyboardManager.getState())
     {
         SI->keyboardManager.confirmKey();
+        return;
+    }
+
+    if (SI->racksPage)
+    {
+        SI->openSelectedDrumRackEditor();
         return;
     }
 

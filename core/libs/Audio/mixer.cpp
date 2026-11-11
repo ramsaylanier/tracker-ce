@@ -73,8 +73,10 @@ template class AudioMixer<4>;
 template class AudioMixer<7>;
 template class AudioMixer<8>;
 template class AudioMixer<10>;
+template class AudioMixer<11>;
 #ifdef PLATFORM_IMX
 template class AudioMixer<18>;
-template class AudioMixer<11>;
+template class AudioMixer<19>; // IMX sends count + drum kit bus channel
 template class AudioMixer<21>;
+template class AudioMixer<22>;
 #endif

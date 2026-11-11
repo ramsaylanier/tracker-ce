@@ -60,6 +60,8 @@ void ProjectOpen::update()
                 copyStep = 0;
                 if (currentInstrument >= kSampleInstrumentsCount)
                 {
+                    for (uint8_t rack = 0; rack < kDrumRackInstrumentsCount; rack++)
+                        copyDrumRackSidecar(rack);
                     currentInstrument = 0;
                     nextStep = ProjectOpenStep::copySampleFiles;
                 }
@@ -219,6 +221,28 @@ bool ProjectOpen::copyPaterns(int& idx)
     }
 
     return false;
+}
+
+void ProjectOpen::copyDrumRackSidecar(int idx)
+{
+    char srcRackPath[PATCH_SIZE];
+    char destRackPath[PATCH_SIZE];
+
+    snprintf(srcRackPath,
+             sizeof(srcRackPath),
+             cProjectsDrumRackFileFormat,
+             newFileManager.getCurrentProjectPath(),
+             newFileManager.getCurrentProjectName(),
+             idx + 1);
+    snprintf(destRackPath, sizeof(destRackPath), cWorkspaceDrumRackFileFormat, idx + 1);
+
+    if (fileSystem->exists(destRackPath))
+        fileSystem->remove(destRackPath);
+
+    if (!fileSystem->exists(srcRackPath))
+        return;
+
+    fileTransfer.copyFile(srcRackPath, destRackPath);
 }
 
 bool ProjectOpen::copyInstruments(int idx, uint8_t& copyState)

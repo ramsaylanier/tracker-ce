@@ -1,8 +1,10 @@
 #include "InstrumentDelete.h"
 
+#include "DrumRack.h"
 #include "fileManager.h"
 #include "fileManagerDefs.h"
 #include "fileTransfer.h"
+#include "mtStructs.h"
 
 #include <cstring>
 
@@ -90,6 +92,7 @@ void InstrumentDelete::deleteInstrumentFinish()
     {
         if (mtProject.instrument[instr].isActive == 1)
         {
+            DrumRack::clearPadReferencesToSlot(instr);
             newFileManager.setDefaultActiveInstrument(&mtProject.instrument[instr]);
             newFileManager.completeLoadedInstrumentStruct(instr, false);
         }

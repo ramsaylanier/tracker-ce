@@ -240,6 +240,7 @@ class AudioPlayMemory : public AudioStream
     void playBeatSlice(uint8_t instrIdx, int8_t note);
     void playGranular(uint8_t instrIdx, int8_t note);
     void playWavetable(uint8_t instrIdx, int8_t note);
+    void playDrumRack(uint8_t instrIdx, int8_t note);
     // UPDATE OBSLUGA OGÓLNA
 
     // UPDATE Z PODZIALEM NA TRYBY

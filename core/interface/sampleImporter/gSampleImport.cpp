@@ -1,5 +1,6 @@
 #include "ampLogarythmicValues.h"
 #include "core/interfacePopups.h"
+#include "DrumRack.h"
 #include "math.h"
 #include "sampleImporter/sampleImporter.h"
 #include "util_string.h"
@@ -148,9 +149,9 @@ void cSampleImporter::initDisplayControls()
 void cSampleImporter::showDefaultScreen()
 {
     titleBar->show();
-    titleBar->setTitle("Sample Loader");
+    titleBar->setTitle("Sample Loader 1/2");
 
-    display.setControlText(label[0], ""); // Micro SD
+    display.setControlText(label[0], "Racks");
     display.setControlText(label[1], "Add next");
     display.setControlText(label[2], "Preview");
     display.setControlText(label[3], "Rename");
@@ -166,7 +167,7 @@ void cSampleImporter::showDefaultScreen()
     display.setControlText2(label[1], "");
     display.setControlText2(label[2], "");
 
-    display.setControlColors(label[0], display.getTheme().activeButtonLabelsColors);
+    display.setControlColors(label[0], display.getTheme().moreButtonColors);
     display.setControlColors(label[1], display.getTheme().activeButtonLabelsColors);
     display.setControlColors(label[2], display.getTheme().activeButtonLabelsColors);
     display.setControlColors(label[3], display.getTheme().activeButtonLabelsColors);
@@ -182,13 +183,19 @@ void cSampleImporter::showDefaultScreen()
                                 controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
         display.setControlStyle2(label[i],
                                  controlStyleCenterX | controlStyleCenterY | controlStyleFont2);
+        display.setRemoveControlStyle(label[i], controlStyleSpecialFx2);
         display.setControlShow(label[i]);
         display.refreshControl(label[i]);
     }
     display.setControlStyle2(label[5],
                              controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
 
-    display.setControlValue(label[0], 0);
+    display.setAddControlStyle(label[0], controlStyleSpecialFx2);
+    labelDataMore.dotIndicator.count = 2;
+    labelDataMore.dotIndicator.current = 0;
+    display.setControlData(label[0], &labelDataMore);
+
+    display.setControlValue(label[0], 1);
     display.setControlValue(label[1], 0);
     display.setControlValue(label[2], 0);
     display.setControlValue(label[3], 0);
@@ -206,10 +213,14 @@ void cSampleImporter::showDefaultScreen()
     display.setControlShow(instrumentLabelControl);
     display.refreshControl(instrumentLabelControl);
 
+    display.setControlShow(explorerListControl);
+    display.setControlShow(instrumentListControl);
+
     keyboardManager.deactivateKeyboard();
 
     display.setControlShow(previewVolumeBarControl);
     display.refreshControl(previewVolumeBarControl);
+    display.setControlShow(memoryBarControl);
 
     display.setControlHide(pointsControl);
     display.setControlHide(spectrumControl[0]);
@@ -230,6 +241,134 @@ void cSampleImporter::showDefaultScreen()
     display.synchronizeRefresh();
 }
 
+void cSampleImporter::showRacksScreen()
+{
+    titleBar->show();
+    // ASCII hyphen only — the FT812 fonts do not render UTF-8 em dashes.
+    titleBar->setTitle("Sample Loader - Racks 2/2");
+
+    display.setControlText(label[0], "New");
+    display.setControlText(label[1], "Open");
+    display.setControlText(label[2], "Clear");
+    display.setControlText(label[3], "Rename");
+    display.setControlText(label[4], "");
+    display.setControlText(label[5], "");
+    display.setControlText(label[6], "");
+    display.setControlText(label[7], "Samples");
+
+    display.setControlText2(label[0], "Rack");
+    display.setControlText2(label[1], "Editor");
+    display.setControlText2(label[2], "Rack");
+    display.setControlText2(label[3], "");
+    display.setControlText2(label[4], "");
+    display.setControlText2(label[5], "");
+    display.setControlText2(label[6], "");
+    display.setControlText2(label[7], "");
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        display.setControlValue(label[i], 0);
+        display.setControlStyle(label[i],
+                                controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
+        display.setControlStyle2(label[i],
+                                 controlStyleCenterX | controlStyleCenterY | controlStyleFont2);
+        display.setRemoveControlStyle(label[i], controlStyleSpecialFx2);
+        display.setControlData(label[i], nullptr);
+        display.setControlShow(label[i]);
+    }
+
+    // value > 0 enables the second label line (Rack / Editor).
+    display.setControlValue(label[0], 1);
+    display.setControlValue(label[1], 1);
+    display.setControlValue(label[2], 1);
+    display.setControlValue(label[3], 0);
+    display.setControlValue(label[7], 1);
+
+    display.setAddControlStyle(label[7], controlStyleSpecialFx2);
+    labelDataMore.dotIndicator.count = 2;
+    labelDataMore.dotIndicator.current = 1;
+    display.setControlData(label[7], &labelDataMore);
+    display.setControlColors(label[7], display.getTheme().moreButtonColors);
+
+    display.setControlValue(bgLabel, 255);
+    display.refreshControl(bgLabel);
+
+    display.setControlHide(explorerListControl);
+    display.setControlHide(explorerLabelControl);
+    display.setControlHide(previewVolumeBarControl);
+    display.setControlHide(memoryBarControl);
+
+    display.setControlText(instrumentLabelControl, "Slots / Racks");
+    display.setControlShow(instrumentLabelControl);
+    display.refreshControl(instrumentLabelControl);
+
+    display.setControlHide(pointsControl);
+    display.setControlHide(spectrumControl[0]);
+    display.setControlHide(spectrumControl[1]);
+    display.setControlHide(progressCursor);
+
+    keyboardManager.deactivateKeyboard();
+
+    selectedPlace = 1;
+    refreshRacksActionButtons();
+    activateLabelsBorder();
+    display.synchronizeRefresh();
+}
+
+void cSampleImporter::refreshRacksActionButtons()
+{
+    const bool kitSelected = selectedSlot < kDrumRackInstrumentsCount &&
+                             mtProject.drumRackInstrument[selectedSlot].isActive;
+    const bool poolFull = DrumRack::findFirstInactivePoolIdx() < 0;
+
+    display.setControlText(label[0], "New");
+    display.setControlText2(label[0], "Rack");
+    display.setControlValue(label[0], 1);
+    display.setControlColors(label[0],
+                             poolFull && !kitSelected
+                               ? display.getTheme().inactiveButtonLabelsColors
+                               : display.getTheme().activeButtonLabelsColors);
+    display.refreshControl(label[0]);
+
+    display.setControlText(label[1], "Open");
+    display.setControlText2(label[1], "Editor");
+    display.setControlValue(label[1], 1);
+    display.setControlColors(label[1],
+                             kitSelected ? display.getTheme().activeButtonLabelsColors
+                                         : display.getTheme().inactiveButtonLabelsColors);
+    display.refreshControl(label[1]);
+
+    display.setControlText(label[2], "Clear");
+    display.setControlText2(label[2], "Rack");
+    display.setControlValue(label[2], 1);
+    display.setControlColors(label[2],
+                             kitSelected ? display.getTheme().activeButtonLabelsColors
+                                         : display.getTheme().inactiveButtonLabelsColors);
+    display.refreshControl(label[2]);
+
+    display.setControlText(label[3], "Rename");
+    display.setControlText2(label[3], "");
+    display.setControlValue(label[3], 0);
+    display.setControlColors(label[3],
+                             kitSelected ? display.getTheme().activeButtonLabelsColors
+                                         : display.getTheme().inactiveButtonLabelsColors);
+    display.refreshControl(label[3]);
+
+    for (uint8_t i = 4; i <= 6; i++)
+    {
+        display.setControlText(label[i], "");
+        display.setControlText2(label[i], "");
+        display.setControlValue(label[i], 0);
+        display.refreshControl(label[i]);
+    }
+
+    display.setControlText(label[7], "Samples");
+    display.setControlText2(label[7], "");
+    display.setControlValue(label[7], 1);
+    display.setControlColors(label[7], display.getTheme().moreButtonColors);
+    display.refreshControl(label[7]);
+}
+
 //==============================================================================================================
 void cSampleImporter::showFilesTree()
 {
@@ -247,7 +386,7 @@ void cSampleImporter::showFilesTree()
 void cSampleImporter::showInstrumentsList()
 {
     instrumentList.start = selectedSlot;
-    instrumentList.length = kSampleInstrumentsCount;
+    instrumentList.length = racksPage ? kDrumRackInstrumentsCount : kSampleInstrumentsCount;
     instrumentList.linesCount = 13;
     instrumentList.data = interfaceGlobals.ptrIntrumentsNames;
 

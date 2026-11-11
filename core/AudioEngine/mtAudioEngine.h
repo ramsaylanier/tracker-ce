@@ -315,6 +315,8 @@ class playerEngine
     void modGranularGrainLength(uint16_t value);
 
     void setRefreshBit(uint32_t mask);
+    // Connect/disconnect + type/cutoff/resonance from the drum-rack bus for this voice.
+    void applyDrumRackBusFilterState();
     //	void resetMods();
     uint8_t getInterfaceEndReleaseFlag();
     void clearInterfaceEndReleaseFlag();

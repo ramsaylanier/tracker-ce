@@ -23,6 +23,8 @@ enum mtInstrumentEditorMode
     mtInstEditModeSynthMacros,
     mtInstEditModeSynthPatchEdit,
 #endif
+    mtInstEditModeDrumRackPads,
+    mtInstEditModeDrumRackBus,
     mtInstEditModeCount,
 };
 
@@ -381,6 +383,49 @@ class cInstrumentEditor : public ModuleBase
     void setDefaultMidiOffset();
     void setDefaultMidiCC(uint8_t index);
     void setPlayButtonAction();
+
+    //----------------------------------
+    // drum rack
+    bool drumRackPadEnvPage = false;
+    bool drumRackPadDetailPage = false;
+
+    static constexpr int kDrumRackPadGridStringLen = 8;
+    char drumRackPadGridText[kDrumRackPadCount][kDrumRackPadGridStringLen]{};
+    char* drumRackPadGridTextPtrs[kDrumRackPadCount]{};
+    char drumRackPadGridSubText[kDrumRackPadCount][kDrumRackPadGridStringLen]{};
+    char* drumRackPadGridSubTextPtrs[kDrumRackPadCount]{};
+
+    void showDrumRackPadsScreen();
+    void setDrumRackPadsScreenFunct();
+    void showDrumRackBusScreen();
+    void setDrumRackBusScreenFunct();
+    void showDrumRackPadsGrid();
+
+    void changeDrumRackPadParamValue(int value, ValueChangeSource source = kArrowButton);
+    void changeDrumRackBusParamValue(int value, ValueChangeSource source = kArrowButton);
+
+    void showDrumRackPadSample();
+    void showDrumRackStartNote();
+    void showDrumRackPadChoke();
+    void showDrumRackPadVolume();
+    void showDrumRackPadPanning();
+    void showDrumRackPadTune();
+    void showDrumRackPadFineTune();
+    void showDrumRackPadDelaySend();
+    void showDrumRackPadReverbSend();
+    void showDrumRackPadAttack();
+    void showDrumRackPadDecay();
+    void showDrumRackPadSustain();
+    void showDrumRackPadRelease();
+
+    void showDrumRackBusFilterType();
+    void showDrumRackBusCutoff();
+    void showDrumRackBusResonance();
+    void showDrumRackBusOverdrive();
+    void showDrumRackBusBitDepth();
+    void showDrumRackBusReverbSend();
+    void showDrumRackBusDelaySend();
+
 #if GUI_HANDLE_SYNTH
     //----------------------------------
     // synth

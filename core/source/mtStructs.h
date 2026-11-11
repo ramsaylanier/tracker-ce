@@ -5,6 +5,7 @@
 #include "mtEnvelopeGenerator.h"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <stdint.h>
 
 //=====================================================================
@@ -107,11 +108,12 @@ static constexpr int kPerformanceTracks = kAllTracks;
 static constexpr uint8_t kSampleInstrumentsCount = 48;
 static constexpr uint8_t kMidiInstrumentsCount = 16;
 static constexpr uint8_t kSynthInstrumentsCount = 3;
-static constexpr uint8_t kTotalInstrumentsCount =
-#ifdef FEATURE_SYNTH
-  kSynthInstrumentsCount +
-#endif
-  kMidiInstrumentsCount + kSampleInstrumentsCount;
+static constexpr uint8_t kDrumRackInstrumentsCount = 8;
+// Index layout is fixed: samples 0..47, MIDI 48..63, synths 64..66, drum racks 67..74.
+// Synth slots stay reserved even when FEATURE_SYNTH / GUI_HANDLE_SYNTH is off.
+static constexpr uint8_t kTotalInstrumentsCount = kSampleInstrumentsCount + kMidiInstrumentsCount +
+                                                 kSynthInstrumentsCount +
+                                                 kDrumRackInstrumentsCount;
 
 static constexpr int kSynthMacrosCount = 6;
 
@@ -121,6 +123,8 @@ static constexpr int kCCMaxValue = 127;
 
 const uint8_t MIDI_INSTRUMENTS_START_IDX = kSampleInstrumentsCount;
 const uint8_t SYNTH_INSTRUMENTS_START_IDX = MIDI_INSTRUMENTS_START_IDX + kMidiInstrumentsCount;
+const uint8_t DRUM_RACK_INSTRUMENTS_START_IDX =
+  SYNTH_INSTRUMENTS_START_IDX + kSynthInstrumentsCount;
 
 const uint8_t PATTERN_INDEX_MIN = 1;
 const uint8_t PATTERN_INDEX_MAX = 255;
@@ -399,8 +403,124 @@ enum instrumentPlayMode
     playModeBeatSlice,
     playModeWavetable, // tylko na uzytek interface - sample type obsługuje to w silniku
     playModeGranular,
+    playModeDrumRack,
     playModeCount
 };
+
+static constexpr uint8_t kDrumRackPadCount = 16;
+static constexpr uint8_t kDrumRackEmptySlot = 0xFF;
+static constexpr uint8_t kDrumRackFirstNote = FIRST_BEAT_SLICE_NOTE;
+
+struct strDrumRackPad
+{
+    uint8_t sampleSlot; // kDrumRackEmptySlot = unused
+    int8_t tune;
+    int8_t fineTune;
+    uint8_t volume;   // 0..100
+    int16_t panning;  // 0..100, 50 = center
+    uint16_t attack;  // ms
+    uint16_t decay;   // ms
+    float sustain;    // 0..1
+    uint16_t release; // ms
+    uint8_t chokeGroup; // 0 = none
+};
+
+struct strDrumRack
+{
+    strDrumRackPad pads[kDrumRackPadCount];
+    uint8_t selectedPad;
+    uint8_t firstNote; // MIDI note for pad 0 (pads 1..15 are firstNote+1..)
+    // Trailing pad sends (appended for sidecar backward compatibility).
+    // Effective send = min(100, padSend + busSend).
+    uint8_t delaySend[kDrumRackPadCount];
+    uint8_t reverbSend[kDrumRackPadCount];
+};
+
+// First-class drum rack instrument (pool slot). Pads still reference sample slots 0..47 only.
+struct strDrumRackInstrument
+{
+    uint8_t isActive;
+    char name[SAMPLE_NAME_SIZE + 1];
+    float cutOff;
+    float resonance;
+    uint8_t filterType;
+    uint8_t filterEnable;
+    uint8_t overdrive;
+    uint8_t bitDepth;
+    uint8_t delaySend;
+    uint8_t reverbSend;
+    uint8_t volume;
+    int16_t panning;
+    strDrumRack rack;
+};
+
+inline void initDefaultDrumRack(strDrumRack* rack)
+{
+    memset(rack, 0, sizeof(strDrumRack));
+    for (uint8_t i = 0; i < kDrumRackPadCount; i++)
+    {
+        rack->pads[i].sampleSlot = kDrumRackEmptySlot;
+        rack->pads[i].volume = DEFAULT_INSTRUMENT_VOLUME;
+        rack->pads[i].panning = 50;
+        rack->pads[i].attack = 10;
+        rack->pads[i].decay = 3000;
+        rack->pads[i].sustain = 1.0f;
+        rack->pads[i].release = 1000;
+        rack->pads[i].chokeGroup = 0;
+    }
+    rack->selectedPad = 0;
+    rack->firstNote = kDrumRackFirstNote;
+    for (uint8_t i = 0; i < kDrumRackPadCount; i++)
+    {
+        rack->delaySend[i] = 0;
+        rack->reverbSend[i] = 0;
+    }
+}
+
+inline void initDefaultDrumRackInstrument(strDrumRackInstrument* instr)
+{
+    memset(instr, 0, sizeof(strDrumRackInstrument));
+    instr->isActive = 0;
+    strncpy(instr->name, "Drum Rack", SAMPLE_NAME_SIZE);
+    instr->name[SAMPLE_NAME_SIZE] = 0;
+    instr->cutOff = 1.0f;
+    instr->resonance = 0;
+    instr->filterType = 0; // lowPass
+    instr->filterEnable = 0;
+    instr->overdrive = 0;
+    instr->bitDepth = 16;
+    instr->delaySend = 0;
+    instr->reverbSend = 0;
+    instr->volume = DEFAULT_INSTRUMENT_VOLUME;
+    instr->panning = 50;
+    initDefaultDrumRack(&instr->rack);
+}
+
+inline uint8_t drumRackNoteToPad(int8_t note, uint8_t firstNote = kDrumRackFirstNote)
+{
+    if (note < (int8_t)firstNote)
+        return 0;
+    int pad = (int)note - (int)firstNote;
+    if (pad >= (int)kDrumRackPadCount)
+        return kDrumRackPadCount - 1;
+    return (uint8_t)pad;
+}
+
+inline uint8_t drumRackPadToNote(uint8_t pad, uint8_t firstNote = kDrumRackFirstNote)
+{
+    if (pad >= kDrumRackPadCount)
+        pad = kDrumRackPadCount - 1;
+    int note = (int)firstNote + (int)pad;
+    if (note > 127)
+        note = 127;
+    return (uint8_t)note;
+}
+
+// Legacy Option A detection only — racks are no longer sample play modes.
+inline bool isDrumRackPlayMode(uint8_t playMode)
+{
+    return playMode == playModeDrumRack;
+}
 
 enum mtSampleType
 {
@@ -1089,6 +1209,7 @@ struct strMtProject
 
     // dynamiczne
     strSampleMemory sampleMemory[kSampleInstrumentsCount];
+    strDrumRackInstrument drumRackInstrument[kDrumRackInstrumentsCount];
     uint32_t max_memory = SAMPLE_MEMORY_SIZE;
     uint32_t used_memory;
     uint16_t perfTracksPatterns[kMaxAllTracksInTrackers] = {

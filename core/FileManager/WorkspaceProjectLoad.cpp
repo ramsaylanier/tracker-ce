@@ -1,9 +1,11 @@
 #include "WorkspaceProjectLoad.h"
 
+#include "DrumRack.h"
 #include "fileManager.h"
 #include "fileManagerDefs.h"
 #include "fileTransfer.h"
 #include "FeatureModuleRegistry.h"
+#include "mtStructs.h"
 
 #if FILEMANAGER_HANDLE_SYNTH == 1
 #include "Synth.h"
@@ -161,6 +163,10 @@ void WorkspaceProjectLoad::loadProjectFromWorkspaceFinish()
         strcpy(newFileManager.getCurrentProjectPath(),
                newFileManager.getProjectPathfromProjectFile());
     }
+
+    DrumRack::clearLegacySampleSlotRacks(fileSystem);
+    for (uint8_t rack = 0; rack < kDrumRackInstrumentsCount; rack++)
+        DrumRack::loadSidecar(rack, fileSystem);
 
     sequencer.switchRamPatternsNow();
     newFileManager.startAudioEngine();

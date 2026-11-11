@@ -2515,7 +2515,8 @@ AUDIO_CORE_RAM void Sequencer::sendNoteOn(uint8_t track,
               step->note, velocity, instrumentIdxToMidiChannel(step->instrument), toSynth);
         }
     }
-    else if (isSampleInstrument(step->instrument) && isSampleTrack(track))
+    else if ((isSampleInstrument(step->instrument) || isDrumRackInstrument(step->instrument)) &&
+             isSampleTrack(track))
     {
         instrumentPlayer[track].noteOn(step->instrument,
                                        step->note,
@@ -2845,7 +2846,8 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
         {
             int trackIdx = (sel->firstTrack + tryIdx) % kAllTracks;
 
-            if (isSampleInstrument(instrument) && !isSampleTrack(trackIdx))
+            if ((isSampleInstrument(instrument) || isDrumRackInstrument(instrument)) &&
+                !isSampleTrack(trackIdx))
             {
                 continue;
             }
@@ -3114,7 +3116,8 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
             int trackIdx = (sel->firstTrack + tryIdx) % kAllTracks;
             int instrument = player.track[trackIdx].stepSent.instrument;
 
-            if (isSampleInstrument(instrument) && !isSampleTrack(trackIdx))
+            if ((isSampleInstrument(instrument) || isDrumRackInstrument(instrument)) &&
+                !isSampleTrack(trackIdx))
             {
                 continue;
             }
@@ -3341,6 +3344,11 @@ uint8_t Sequencer::getInstrumentVelo(uint8_t instrumentIdx)
     {
         return volumeToVelocity(mtProject.instrument[instrumentIdx].volume);
     }
+    else if (isDrumRackInstrument(instrumentIdx))
+    {
+        return volumeToVelocity(
+          mtProject.drumRackInstrument[drumRackInstrumentToIdx(instrumentIdx)].volume);
+    }
     return 0;
 }
 // todo synth: reduce to one function
@@ -3359,6 +3367,10 @@ uint8_t Sequencer::getInstrumentVolume(uint8_t instrumentIdx)
     else if (isSampleInstrument(instrumentIdx))
     {
         return mtProject.instrument[instrumentIdx].volume;
+    }
+    else if (isDrumRackInstrument(instrumentIdx))
+    {
+        return mtProject.drumRackInstrument[drumRackInstrumentToIdx(instrumentIdx)].volume;
     }
     return 0;
 }
@@ -3837,10 +3849,31 @@ AUDIO_CORE_RAM bool isSynthInstrument(int instrument)
            instrument < kSampleInstrumentsCount + kMidiInstrumentsCount + kSynthInstrumentsCount;
 }
 
+AUDIO_CORE_RAM bool isDrumRackInstrument(int instrument)
+{
+    assert(instrument >= 0);
+    assert(instrument < kTotalInstrumentsCount);
+    return instrument >= DRUM_RACK_INSTRUMENTS_START_IDX &&
+           instrument < DRUM_RACK_INSTRUMENTS_START_IDX + kDrumRackInstrumentsCount;
+}
+
+AUDIO_CORE_RAM int drumRackInstrumentToIdx(int instrument)
+{
+    assert(isDrumRackInstrument(instrument));
+    return instrument - DRUM_RACK_INSTRUMENTS_START_IDX;
+}
+
+AUDIO_CORE_RAM int drumRackIdxToInstrument(int poolIdx)
+{
+    assert(poolIdx >= 0);
+    assert(poolIdx < kDrumRackInstrumentsCount);
+    return DRUM_RACK_INSTRUMENTS_START_IDX + poolIdx;
+}
+
 AUDIO_CORE_RAM int instrumentIdxToMidiChannel(int instrument)
 {
     assert(instrument >= 0);
-    if (isSampleInstrument(instrument))
+    if (isSampleInstrument(instrument) || isDrumRackInstrument(instrument))
     {
         return kNoChannel;
     }

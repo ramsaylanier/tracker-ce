@@ -6,6 +6,7 @@
 #include "mtAudioEngine.h"
 #include "mtPadBoard.h"
 #include "mtPadsBacklight.h"
+#include "mtSequencer.h"
 
 #include "Platform.h"
 #include "ampLogarythmicValues.h"
@@ -77,28 +78,40 @@ void cInstrumentEditor::update()
     moduleRefresh = 0;
 }
 
+static bool isLastUsedInstrumentDrumRack()
+{
+    return isDrumRackInstrument(mtProject.values.lastUsedInstrument);
+}
+
 void cInstrumentEditor::start(uint32_t options)
 {
     moduleRefresh = 1;
 
-    if (mtProject.values.lastUsedInstrument >= SYNTH_INSTRUMENTS_START_IDX + kSynthParts)
+    if (mtProject.values.lastUsedInstrument >=
+        DRUM_RACK_INSTRUMENTS_START_IDX + kDrumRackInstrumentsCount)
     {
         mtProject.values.lastUsedInstrument = 0;
     }
 
     // adjust mode when instrument is other than current mode expects
+    // Drum racks (67..74) must be checked before MIDI/synth range tests — those use >= 48 / >= 64.
     switch (options)
     {
         case 1:
         {
+            if (isLastUsedInstrumentDrumRack())
+            {
+                mode = mtInstEditModeDrumRackPads;
+                drumRackPadEnvPage = false;
+                drumRackPadDetailPage = false;
+            }
 #if GUI_HANDLE_SYNTH
-            if (mtProject.values.lastUsedInstrument >= SYNTH_INSTRUMENTS_START_IDX)
+            else if (isSynthInstrument(mtProject.values.lastUsedInstrument))
             {
                 mode = mtInstEditModeSynth;
             }
-            else
 #endif
-              if (mtProject.values.lastUsedInstrument >= MIDI_INSTRUMENTS_START_IDX)
+            else if (isMidiInstrument(mtProject.values.lastUsedInstrument))
             {
                 mode = mtInstEditModeMidi;
             }
@@ -110,15 +123,19 @@ void cInstrumentEditor::start(uint32_t options)
         }
         case 2:
         {
+            if (isLastUsedInstrumentDrumRack())
+            {
+                mode = mtInstEditModeDrumRackBus;
+            }
 #if GUI_HANDLE_SYNTH
-            if (mtProject.values.lastUsedInstrument >= SYNTH_INSTRUMENTS_START_IDX)
+            else if (isSynthInstrument(mtProject.values.lastUsedInstrument))
             {
                 mode = mtInstEditModeSynthMacros;
             }
-            else
 #endif
+            else
             {
-                if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount)
+                if (!isSampleInstrument(mtProject.values.lastUsedInstrument))
                 {
                     mtProject.values.lastUsedInstrument = 0;
                 }
@@ -128,7 +145,7 @@ void cInstrumentEditor::start(uint32_t options)
         }
         case 3:
         {
-            if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount)
+            if (!isSampleInstrument(mtProject.values.lastUsedInstrument))
             {
                 mtProject.values.lastUsedInstrument = 0;
             }
@@ -137,7 +154,13 @@ void cInstrumentEditor::start(uint32_t options)
         }
         case 4:
         {
-            if (isSynthInstrument(mtProject.values.lastUsedInstrument))
+            if (isLastUsedInstrumentDrumRack())
+            {
+                mode = mtInstEditModeDrumRackPads;
+                drumRackPadEnvPage = false;
+                drumRackPadDetailPage = false;
+            }
+            else if (isSynthInstrument(mtProject.values.lastUsedInstrument))
             {
             }
             else if (isMidiInstrument(mtProject.values.lastUsedInstrument))
@@ -156,17 +179,25 @@ void cInstrumentEditor::start(uint32_t options)
         }
         default:
         {
+            if (isLastUsedInstrumentDrumRack())
+            {
+                if (mode != mtInstEditModeDrumRackPads && mode != mtInstEditModeDrumRackBus)
+                {
+                    mode = mtInstEditModeDrumRackPads;
+                    drumRackPadEnvPage = false;
+                    drumRackPadDetailPage = false;
+                }
+            }
 #if GUI_HANDLE_SYNTH
-            if (mtProject.values.lastUsedInstrument >= SYNTH_INSTRUMENTS_START_IDX)
+            else if (isSynthInstrument(mtProject.values.lastUsedInstrument))
             {
                 if (mode != mtInstEditModeSynth && mode != mtInstEditModeSynthMacros)
                 {
                     mode = mtInstEditModeSynth;
                 }
             }
-            else
 #endif
-              if (mtProject.values.lastUsedInstrument >= MIDI_INSTRUMENTS_START_IDX)
+            else if (isMidiInstrument(mtProject.values.lastUsedInstrument))
             {
                 mode = mtInstEditModeMidi;
             }
@@ -255,6 +286,18 @@ void cInstrumentEditor::start(uint32_t options)
             break;
         }
 #endif
+        case mtInstEditModeDrumRackPads:
+        {
+            showDrumRackPadsScreen();
+            setDrumRackPadsScreenFunct();
+            break;
+        }
+        case mtInstEditModeDrumRackBus:
+        {
+            showDrumRackBusScreen();
+            setDrumRackBusScreenFunct();
+            break;
+        }
         default:
         {
             showInstrumentParams();
@@ -298,9 +341,12 @@ void cInstrumentEditor::hideControlsUnderMiniMenu()
 uint8_t cInstrumentEditor::getCurrentModeIdx()
 {
 #if GUI_HANDLE_SYNTH
-    return (mode == mtInstEditModeEnv || mode == mtInstEditModeSynthMacros) ? 1 : 0;
+    return (mode == mtInstEditModeEnv || mode == mtInstEditModeSynthMacros ||
+            mode == mtInstEditModeDrumRackBus)
+             ? 1
+             : 0;
 #else
-    return (mode == mtInstEditModeEnv) ? 1 : 0;
+    return (mode == mtInstEditModeEnv || mode == mtInstEditModeDrumRackBus) ? 1 : 0;
 #endif
 }
 
@@ -1010,6 +1056,16 @@ static void functSwitchMode()
         IE->mode = mtInstEditModeSynth;
     }
 #endif
+    else if (IE->mode == mtInstEditModeDrumRackPads)
+    {
+        IE->mode = mtInstEditModeDrumRackBus;
+    }
+    else if (IE->mode == mtInstEditModeDrumRackBus)
+    {
+        IE->mode = mtInstEditModeDrumRackPads;
+        IE->drumRackPadEnvPage = false;
+        IE->drumRackPadDetailPage = false;
+    }
 
     IE->start(0);
 }
@@ -2898,6 +2954,12 @@ static void functPads(uint8_t pad, uint8_t state, int16_t)
         return;
     }
 
+    if (IE->mode == mtInstEditModeDrumRackPads || IE->mode == mtInstEditModeDrumRackBus)
+    {
+        // Handled by DrumRackEditor pad functions when those screens are active.
+        return;
+    }
+
     bool isBeatSlice = false;
 
     if (mtProject.values.lastUsedInstrument < kSampleInstrumentsCount)
@@ -2936,8 +2998,7 @@ static void functInstrument(uint8_t state)
     {
         IE->editorInstrument = &mtProject.instrument[mtProject.values.lastUsedInstrument];
         IE->cancelPopups();
-
-        IE->lightUpPadBoard();
+        IE->start(0);
     }
     else if (state == buttonPress)
     {

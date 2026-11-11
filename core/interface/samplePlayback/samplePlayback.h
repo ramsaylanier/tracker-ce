@@ -10,10 +10,12 @@
 #undef MAX_SELECT_NODES
 #define MAX_SELECT_NODES 4
 
-const char playModeFunctLabels[playModeCount][15] = {
+// playModeDrumRack remains in the enum for Option A load detection only — not selectable here.
+static constexpr uint8_t kSamplePlayModeUiCount = playModeGranular + 1;
+
+const char playModeFunctLabels[kSamplePlayModeUiCount][15] = {
     "1-Shot", "Forward Loop", "Backward Loop", "Pingpong Loop",
     "Slice",  "Beat Slice",   "Wavetable",     "Granular",
-
 };
 
 constexpr uint8_t MAX_WAVETABLE_WINDOWS_COUNTER = 11;
@@ -90,6 +92,12 @@ class cSamplePlayback : public ModuleBase
     void showSlicesAdjustValue();
     void showSlicesEqualNumberValue();
     void showSlicesPlayThruValue();
+    void showDrumRackPadValue();
+    void showDrumRackSampleValue();
+    void showDrumRackChokeValue();
+    char drumRackPadText[8];
+    char drumRackSampleText[12];
+    char drumRackChokeText[8];
 
     void onEndTrackDisplay();
 
@@ -207,7 +215,7 @@ class cSamplePlayback : public ModuleBase
 
     void listPlayMode();
 
-    char* playModeNames[playModeCount];
+    char* playModeNames[kSamplePlayModeUiCount];
 
     //----------------------------------
     // odtwarzanie

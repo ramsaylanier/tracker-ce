@@ -1,3 +1,4 @@
+#include "DrumRack.h"
 #include "ampLogarythmicValues.h"
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
@@ -6,7 +7,8 @@ using namespace mtAudioEngineConstans;
 
 AUDIO_CORE_RAM void playerEngine::update()
 {
-    if (isBlockedInstrument[currentInstrument_idx])
+    if (!DrumRack::isGlobalDrumRack(currentInstrument_idx) &&
+        isBlockedInstrument[currentInstrument_idx])
         return;
     //**************HANDLE UPDATE END RELEASE
     // obsluga tego zdarzenia jako pierwsza zeby zapobiec zawieszaniu nut
@@ -18,22 +20,30 @@ AUDIO_CORE_RAM void playerEngine::update()
     //**************HANDLE UPDATE ENVELOPE
     // stablicowanie warunkow odswiezenia envelopeow
     bool envelopeCondition[ACTIVE_ENVELOPES];
+    const bool isKit = DrumRack::isGlobalDrumRack(currentInstrument_idx);
+    // Kit pads use a synthetic amp env — never index instrument[67+].
     envelopeCondition[envAmp] =
-      ((mtProject.instrument[currentInstrument_idx].envelope[envAmp].enable == 1) ||
-       (trackControlParameter[(int)controlType::sequencerMode][envelopesControlValue[envAmp]]) ||
-       (trackControlParameter[(int)controlType::sequencerMode2][envelopesControlValue[envAmp]]) ||
-       (trackControlParameter[(int)controlType::performanceMode][envelopesControlValue[envAmp]]));
-    envelopeCondition[envCutoff] = (mtProject.instrument[currentInstrument_idx].filterEnable == 1);
-    envelopeCondition[envPan] = true;
+      isKit ? false
+            : ((mtProject.instrument[currentInstrument_idx].envelope[envAmp].enable == 1) ||
+               (trackControlParameter[(int)controlType::sequencerMode]
+                                     [envelopesControlValue[envAmp]]) ||
+               (trackControlParameter[(int)controlType::sequencerMode2]
+                                     [envelopesControlValue[envAmp]]) ||
+               (trackControlParameter[(int)controlType::performanceMode]
+                                     [envelopesControlValue[envAmp]]));
+    envelopeCondition[envCutoff] = (DrumRack::busFilterEnable(currentInstrument_idx) == 1);
+    envelopeCondition[envPan] = !isKit;
     envelopeCondition[envWtPos] =
-      (mtProject.instrument[currentInstrument_idx].sample.type == mtSampleTypeWavetable) ||
-      (mtProject.instrument[currentInstrument_idx].playMode == playModeWavetable) ||
-      ((mtProject.instrument[currentInstrument_idx].sample.type == mtSampleTypeWaveFile) &&
-       (mtProject.instrument[currentInstrument_idx].playMode == playModeGranular));
+      isKit ? false
+            : ((mtProject.instrument[currentInstrument_idx].sample.type == mtSampleTypeWavetable) ||
+               (mtProject.instrument[currentInstrument_idx].playMode == playModeWavetable) ||
+               ((mtProject.instrument[currentInstrument_idx].sample.type == mtSampleTypeWaveFile) &&
+                (mtProject.instrument[currentInstrument_idx].playMode == playModeGranular)));
     envelopeCondition[envGranPos] =
-      ((mtProject.instrument[currentInstrument_idx].sample.type == mtSampleTypeWaveFile) &&
-       (mtProject.instrument[currentInstrument_idx].playMode == playModeGranular));
-    envelopeCondition[envFinetune] = true;
+      isKit ? false
+            : ((mtProject.instrument[currentInstrument_idx].sample.type == mtSampleTypeWaveFile) &&
+               (mtProject.instrument[currentInstrument_idx].playMode == playModeGranular));
+    envelopeCondition[envFinetune] = !isKit;
     //*******
     for (uint8_t i = envAmp; i < ACTIVE_ENVELOPES; i++)
     {
@@ -206,6 +216,8 @@ inline void playerEngine::handleUpdateEndReleaseAction()
         if (isTrackDisplayed)
             onEndDisplay = true;
         //		playMemPtr->stop();
+        if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+            return;
         for (uint8_t i = envPan; i < ACTIVE_ENVELOPES; i++)
         {
             uint8_t curLoop = mtProject.instrument[currentInstrument_idx].envelope[i].loop;
@@ -346,6 +358,12 @@ inline void playerEngine::handleUpdateRefreshPanning()
         {
             localPanning = currentSeqModValues.panning;
         }
+        else if (DrumRack::isGlobalDrumRack(currentInstrument_idx))
+        {
+            const uint8_t padIdx = drumRackNoteToPad(
+              currentNote, DrumRack::firstNoteOfGlobal(currentInstrument_idx));
+            localPanning = mtProject.drumRackInstrument[DrumRack::poolIdxFromGlobal(currentInstrument_idx)].rack.pads[padIdx].panning;
+        }
         else
         {
             localPanning = mtProject.instrument[currentInstrument_idx].panning;
@@ -390,7 +408,7 @@ inline void playerEngine::handleUpdateRefreshCutoff()
         }
         else
         {
-            localCutoff = mtProject.instrument[currentInstrument_idx].cutOff;
+            localCutoff = DrumRack::busCutOff(currentInstrument_idx);
         }
 
         if (localCutoff + currentEnvelopeModification[envCutoff] < 0.0f)
@@ -408,7 +426,7 @@ inline void playerEngine::handleUpdateRefreshResonance()
     if (refreshRegister & RESONANCE_MASK)
     {
         refreshRegister &= (~RESONANCE_MASK);
-        modResonance(mtProject.instrument[currentInstrument_idx].resonance);
+        modResonance(DrumRack::busResonance(currentInstrument_idx));
     }
 }
 void playerEngine::handleUpdateRefreshDelay()
@@ -426,7 +444,7 @@ void playerEngine::handleUpdateRefreshDelay()
         }
         else
         {
-            localDelaySend = mtProject.instrument[currentInstrument_idx].delaySend;
+            localDelaySend = DrumRack::busDelaySend(currentInstrument_idx);
         }
 
         if (trackControlParameter[(int)controlType::performanceMode][(int)parameterList::delaySend])
@@ -463,7 +481,7 @@ void playerEngine::handleUpdateRefreshReverb()
         }
         else
         {
-            localReverbSend = mtProject.instrument[currentInstrument_idx].reverbSend;
+            localReverbSend = DrumRack::busReverbSend(currentInstrument_idx);
         }
 
         if (trackControlParameter[(int)controlType::performanceMode]
@@ -505,7 +523,7 @@ inline void playerEngine::handleUpdateRefreshOverdrive()
         }
         else
         {
-            overdrive = mtProject.instrument[currentInstrument_idx].overdrive;
+            overdrive = DrumRack::busOverdrive(currentInstrument_idx);
         }
 
         modOverdrive(overdrive);
@@ -532,7 +550,7 @@ inline void playerEngine::handleUpdateRefreshBitDepth()
         }
         else
         {
-            bitDepth = mtProject.instrument[currentInstrument_idx].bitDepth;
+            bitDepth = DrumRack::busBitDepth(currentInstrument_idx);
         }
 
         modBitDepth(bitDepth);
@@ -760,7 +778,7 @@ inline void playerEngine::handleUpdateRefreshCutoffLFO()
     {
         refreshRegister &= (~LFO_FILTER_SEND_MASK);
 
-        if (mtProject.instrument[currentInstrument_idx].filterEnable)
+        if (DrumRack::busFilterEnable(currentInstrument_idx))
         {
             if ((mtProject.instrument[currentInstrument_idx].envelope[envCutoff].enable) &&
                 (!trackControlParameter[(int)controlType::sequencerMode]

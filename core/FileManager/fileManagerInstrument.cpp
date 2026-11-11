@@ -1,6 +1,7 @@
 #include "mtSequencer.h"
 #include "mtStructs.h"
 
+#include "DrumRack.h"
 #include "Platform.h"
 #include "VoiceStreamManager.h"
 #include "fileManager.h"

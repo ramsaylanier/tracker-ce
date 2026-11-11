@@ -1015,7 +1015,9 @@ void cInstrumentEditor::showSynthPatchEditorScreen()
     imgGridData.rowsCount = kGridRowsCount;
     imgGridData.imgW = 40;
     imgGridData.imgH = 40;
+    imgGridData.textInPad = false;
     imgGridData.textList = sectionNamesList;
+    imgGridData.subTextList = nullptr;
     imgGridData.imgList = sectionImgList;
     display.setControlShow(imgGridControl);
 

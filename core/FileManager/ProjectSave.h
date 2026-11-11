@@ -40,6 +40,7 @@ class ProjectSave : public FileManagerOperation
     void copyProject();
     bool copyPaterns(int& idx);
     bool copyInstruments(int idx, uint8_t& copyState);
+    void copyDrumRackSidecar(int idx);
     void saveProjectFinish();
 
     void listProjectExistingInstruments();

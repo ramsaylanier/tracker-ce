@@ -1,4 +1,5 @@
 #include "core/interfacePopups.h"
+#include "DrumRack.h"
 #include "fileManager.h"
 #include "mtAudioEngine.h"
 #include "samplePlayback.h"
@@ -72,9 +73,14 @@ void cSamplePlayback::initDisplayControls()
     prop2.h = 54;
     bgLabel = display.createControl<cBgLabel>(&prop2);
 
-    playModeList.linesCount = 8;
-    playModeList.start = editorInstrument->playMode;
-    playModeList.length = playModeCount;
+    // initDisplayControls() runs before start(), so editorInstrument may still be null.
+    const uint8_t initialPlayMode =
+      (mtProject.values.lastUsedInstrument < kSampleInstrumentsCount)
+        ? mtProject.instrument[mtProject.values.lastUsedInstrument].playMode
+        : playModeSingleShot;
+    playModeList.linesCount = kSamplePlayModeUiCount;
+    playModeList.start = initialPlayMode;
+    playModeList.length = kSamplePlayModeUiCount;
     playModeList.data = playModeNames;
     prop.x = (800 / 8) * 6 + 1;
     prop.y = 29;
@@ -172,7 +178,32 @@ void cSamplePlayback::showDefaultScreen()
         display.setControlShow(progressCursor);
         display.refreshControl(progressCursor);
 
-        if ((editorInstrument->playMode == playModeSlice) ||
+        if (editorInstrument->playMode == playModeDrumRack)
+        {
+            display.setControlHide(pointsControl);
+            display.setControlHide(granularCursor);
+            display.setControlHide(slicePointsControl);
+            hideWavetablePositionCursor();
+
+            display.setControlText(label[0], "Pad");
+            display.setControlText(label[1], "Sample");
+            display.setControlText(label[2], "");
+            display.setControlText(label[3], "");
+            display.setControlText(label[4], "");
+            display.setControlText(label[5], "Edit");
+            display.setControlText2(label[2], "");
+            display.setControlText2(label[3], "");
+            display.setControlText2(label[4], "");
+            display.setControlText2(label[5], "Pads");
+            display.setControlValue(label[5], 0);
+            display.setControlColors(label[5], display.getTheme().activeButtonLabelsColors);
+            showDrumRackPadValue();
+            showDrumRackSampleValue();
+            display.setControlText2(label[2], "");
+            display.refreshControl(label[2]);
+            display.refreshControl(label[5]);
+        }
+        else if ((editorInstrument->playMode == playModeSlice) ||
             (editorInstrument->playMode == playModeBeatSlice))
         {
             display.setControlHide(pointsControl);
@@ -448,9 +479,15 @@ void cSamplePlayback::showZoomValue()
 
 void cSamplePlayback::showPlayModeList()
 {
-    playModeList.start = editorInstrument->playMode;
-    playModeList.length = playModeCount;
-    playModeList.linesCount = 9;
+    const uint8_t playMode = editorInstrument != nullptr
+                               ? editorInstrument->playMode
+                               : ((mtProject.values.lastUsedInstrument < kSampleInstrumentsCount)
+                                    ? mtProject.instrument[mtProject.values.lastUsedInstrument]
+                                        .playMode
+                                    : playModeSingleShot);
+    playModeList.start = playMode;
+    playModeList.length = kSamplePlayModeUiCount;
+    playModeList.linesCount = kSamplePlayModeUiCount;
     playModeList.data = playModeNames;
 
     display.setControlData(playModeListControl, &playModeList);
@@ -798,6 +835,40 @@ void cSamplePlayback::showLoopTypeText()
     display.setControlText2(label[4], loopTypeText);
     display.setControlShow(label[4]);
     display.refreshControl(label[4]);
+}
+
+void cSamplePlayback::showDrumRackPadValue()
+{
+    // Drum racks are first-class instruments; Sample Playback no longer edits them.
+    snprintf(drumRackPadText, sizeof(drumRackPadText), "--");
+    display.setControlText2(label[0], drumRackPadText);
+    display.setControlShow(label[0]);
+    display.refreshControl(label[0]);
+}
+
+void cSamplePlayback::showDrumRackSampleValue()
+{
+    strDrumRackPad* pad = DrumRack::editPad(mtProject.values.lastUsedInstrument);
+    if (pad == nullptr || pad->sampleSlot == kDrumRackEmptySlot)
+        snprintf(drumRackSampleText, sizeof(drumRackSampleText), "---");
+    else
+        snprintf(drumRackSampleText, sizeof(drumRackSampleText), "%02u", pad->sampleSlot + 1);
+    display.setControlText2(label[1], drumRackSampleText);
+    display.setControlShow(label[1]);
+    display.refreshControl(label[1]);
+}
+
+void cSamplePlayback::showDrumRackChokeValue()
+{
+    strDrumRackPad* pad = DrumRack::editPad(mtProject.values.lastUsedInstrument);
+    const uint8_t choke = pad != nullptr ? pad->chokeGroup : 0;
+    if (choke == 0)
+        snprintf(drumRackChokeText, sizeof(drumRackChokeText), "Off");
+    else
+        snprintf(drumRackChokeText, sizeof(drumRackChokeText), "%u", choke);
+    display.setControlText2(label[2], drumRackChokeText);
+    display.setControlShow(label[2]);
+    display.refreshControl(label[2]);
 }
 
 float cSamplePlayback::samplePosToTime(uint32_t pos)
