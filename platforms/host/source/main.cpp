@@ -4,6 +4,7 @@
 #include "WavWriter.h"
 #include "config.h"
 #include "display.h"
+#include "hostMasterVolume.h"
 #include "interfaceDefs.h"
 
 #include <SDL.h>
@@ -97,10 +98,14 @@ void audioCallback(void* /*userdata*/, Uint8* stream, int len)
         int16_t left[128]{};
         int16_t right[128]{};
         gTracker->updateAudioBuffers(left, right, n);
+        // Hardware codec volume is stubbed on host — apply it here on the final mix.
+        const float masterGain = hostGetMasterVolumeGain();
         for (int i = 0; i < n; ++i)
         {
-            out[(offset + i) * 2] = left[i];
-            out[(offset + i) * 2 + 1] = right[i];
+            const int16_t l = static_cast<int16_t>(left[i] * masterGain);
+            const int16_t r = static_cast<int16_t>(right[i] * masterGain);
+            out[(offset + i) * 2] = l;
+            out[(offset + i) * 2 + 1] = r;
         }
         wavRingPush(out + offset * 2, n);
         offset += n;

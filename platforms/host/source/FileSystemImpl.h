@@ -15,6 +15,7 @@ class FileSystemImpl final : public FileSystem
 
     virtual bool isSdCardInserted() override;
     virtual void setMountEventCallback(CardStateChangeCallback funct) override;
+    virtual bool remount() override;
 
     virtual bool exists(const char* path) override;
     virtual bool rename(const char* oldPath, const char* newPath) override;
@@ -29,8 +30,8 @@ class FileSystemImpl final : public FileSystem
     virtual std::tuple<bool, FileHandle> openFile(const char* filepath,
                                                   FileOpenMode openMode = kRead,
                                                   FileHandle* fileHandle = nullptr) override;
-    virtual size_t readFile(void* destBuf, size_t bufLen, FileHandle file) override;
-    virtual size_t writeFile(const void* data, size_t dataSize, FileHandle fileHandle) override;
+    virtual int32_t readFile(void* destBuf, size_t bufLen, FileHandle file) override;
+    virtual int32_t writeFile(const void* data, size_t dataSize, FileHandle fileHandle) override;
     virtual bool seekFileCur(int offset, FileHandle fileHandle) override;
     virtual bool seekFile(uint32_t pos, FileHandle fileHandle) override;
     virtual void closeFile(FileHandle file, bool deleteOnClose = true) override;
