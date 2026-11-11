@@ -3,6 +3,7 @@
 
 #include "ConfigManager.h"
 #include "Platform.h"
+#include "hostMasterVolume.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -120,7 +121,11 @@ class Sgtl5000Impl : public Sgtl5000
     virtual void setLineInLevel(int) override {}
     virtual void setMicGain(int) override {}
     virtual void setHeadphoneMuted(bool) override {}
-    virtual void setMasterVolume(float) override {}
+    virtual void setMasterVolume(float volume) override
+    {
+        // Hardware codec is stubbed on host; engine applies this as software gain.
+        hostSetMasterVolumeGain(volume);
+    }
     virtual void setAutoVolumeEnabled(bool) override {}
     virtual void configureAutoVolume(AutoVolumeParams*) override {}
     virtual void setEnhanceBassEnabled(bool) override {}
