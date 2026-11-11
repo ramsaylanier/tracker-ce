@@ -169,11 +169,11 @@ audioEngine::audioEngine()
     prePolyverbMixer = mixerAndFxs.getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb);
     preDelayMixer = mixerAndFxs.getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay);
 
-    connections.push_back(new AudioConnection(&DrumRack::sendBus(),
+    connections.push_back(new AudioConnection(&drumKitSend,
                                               0,
                                               preDelayMixer,
                                               MixerAndFxs<kVoices>::kDrumKitSendMixerChannel));
-    connections.push_back(new AudioConnection(&DrumRack::sendBus(),
+    connections.push_back(new AudioConnection(&drumKitSend,
                                               1,
                                               prePolyverbMixer,
                                               MixerAndFxs<kVoices>::kDrumKitSendMixerChannel));
@@ -363,7 +363,7 @@ void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* m
                           0,
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
                           idx));
-    connections.push_back(new AudioConnection(voice->getFilter(), 0, &DrumRack::sendBus(), idx));
+    connections.push_back(new AudioConnection(voice->getFilter(), 0, &drumKitSend, idx));
 }
 #else
 void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* mixerAndFxs, int idx)
@@ -402,7 +402,7 @@ void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* m
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
                           kVoices + kInputsChannels + idx));
     connections.push_back(new AudioConnection(
-      voice->getFilter(AudioVoice::VoiceChannels::kLeft), 0, &DrumRack::sendBus(), idx));
+      voice->getFilter(AudioVoice::VoiceChannels::kLeft), 0, &drumKitSend, idx));
 }
 #endif
 

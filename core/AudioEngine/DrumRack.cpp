@@ -185,11 +185,10 @@ AUDIO_CORE_RAM void AudioDrumKitSend::update()
 
 namespace DrumRack
 {
-static AudioDrumKitSend s_sendBus;
-
 AudioDrumKitSend& sendBus()
 {
-    return s_sendBus;
+    // Owned by audioEngine so construction/update order is filter → send → FX mixers.
+    return engine.getDrumKitSend();
 }
 
 void initProjectRacks()

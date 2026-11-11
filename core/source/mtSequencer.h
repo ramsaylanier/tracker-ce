@@ -9,7 +9,7 @@
 #include "util_math.h"
 #include <stdint.h>
 
-static void nullCallback(void){};
+static inline void nullCallback(void) {}
 
 bool isSampleInstrument(int instrument);
 bool isMidiInstrument(int instrument);

@@ -6,6 +6,7 @@
 #include "AudioInput.h"
 #include "AudioOutput.h"
 #include "AudioVoice.h"
+#include "DrumRack.h"
 #include "ExportQueues.h"
 #include "MixerAndFxs.h"
 #include "Platform.h"
@@ -191,6 +192,7 @@ class audioEngine
     AudioOutput* getAudioOutput();
     ExportQueues* getExportQueues();
     MixerAndFxs<kVoices>* getMixerAndFx();
+    AudioDrumKitSend& getDrumKitSend() { return drumKitSend; }
     AudioPlaySdWav* getSdPlayer();
 
     friend class playerEngine;
@@ -235,6 +237,9 @@ class audioEngine
     AudioPlaySdWav playerWavFromSD;
     AudioSynthWaveform testWaveform;
     AudioPlayMemory metronomeTick;
+    // Must be constructed after sample-voice filters (instrumentPlayer) and before
+    // mixerAndFxs so Teensy update order is: filter → kit send → pre-FX mixers.
+    AudioDrumKitSend drumKitSend;
     MixerAndFxs<kVoices> mixerAndFxs;
 
 #ifdef FEATURE_SYNTH
