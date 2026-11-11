@@ -72,6 +72,7 @@ void FileSystemImpl::setMountEventCallback(CardStateChangeCallback funct)
 
 bool FileSystemImpl::remount()
 {
+    // Host SD is a plain directory; nothing to remount beyond confirming it is usable.
     return mounted;
 }
 
@@ -234,7 +235,7 @@ int32_t FileSystemImpl::readFile(void* destBuf, size_t bufLen, FileHandle file)
     HostFile* f = asFile(file);
     if (!f || !f->fp)
         return 0;
-    return (int32_t)std::fread(destBuf, 1, bufLen, f->fp);
+    return static_cast<int32_t>(std::fread(destBuf, 1, bufLen, f->fp));
 }
 
 int32_t FileSystemImpl::writeFile(const void* data, size_t dataSize, FileHandle fileHandle)
@@ -242,7 +243,7 @@ int32_t FileSystemImpl::writeFile(const void* data, size_t dataSize, FileHandle 
     HostFile* f = asFile(fileHandle);
     if (!f || !f->fp)
         return 0;
-    return (int32_t)std::fwrite(data, 1, dataSize, f->fp);
+    return static_cast<int32_t>(std::fwrite(data, 1, dataSize, f->fp));
 }
 
 bool FileSystemImpl::seekFileCur(int offset, FileHandle fileHandle)
