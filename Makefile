@@ -20,7 +20,8 @@ OUT_DIR       := $(ROOT_DIR)/build
 # Use `make select` to pick interactively, or override:
 #   make all FEATURE_MODULE_DIRS="/path/to/a /path/to/b"
 FEATURE_MODULES_ROOT ?= $(ROOT_DIR)/feature-modules
-FEATURE_MODULE_DIRS ?= $(shell find "$(FEATURE_MODULES_ROOT)" -mindepth 2 -maxdepth 2 -name module.mk -exec dirname {} \; 2>/dev/null | sort)
+# Skip feature-modules/_*/ (examples / WIP) from the default set.
+FEATURE_MODULE_DIRS ?= $(shell find "$(FEATURE_MODULES_ROOT)" -mindepth 2 -maxdepth 2 -name module.mk -exec dirname {} \; 2>/dev/null | grep -v '/_' | sort)
 
 include $(ROOT_DIR)/version.mk
 

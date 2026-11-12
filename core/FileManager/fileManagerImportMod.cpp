@@ -3,7 +3,7 @@
 
 #include "mtSequencer.h"
 
-#include "ScreenHost.h"
+#include "core/modulePageHost.h"
 #include "fileManager.h"
 #include "fileTransfer.h"
 #include "log.h"

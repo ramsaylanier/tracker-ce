@@ -1,4 +1,4 @@
-#include "ModuleSidecar.h"
+#include "sdk/ModuleSidecar.h"
 
 #include "Platform.h"
 #include "fileManager.h"

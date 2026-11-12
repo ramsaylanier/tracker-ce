@@ -6,6 +6,10 @@
 #include "patternEditor/patternEditor.h"
 #include "performanceMode/performanceMode.h"
 #include "scales.h"
+#include "sdk/Columns.h"
+#include "sdk/Registrar.h"
+
+#include <string.h>
 
 #ifdef GUI_HANDLE_SYNTH
 #include "Synth.h"
@@ -263,6 +267,8 @@ void cPatternEditor::initDisplayControls()
         // case 2: patternControl = arrangementControl; break;
         default: patternControl = verticalPatternControl; break;
     }
+
+    moduleListPage.createListControl();
 }
 
 void cPatternEditor::showDefaultScreen()
@@ -1501,6 +1507,10 @@ void cPatternEditor::showActionButtonPage1Labels()
         display.refreshControl(label[i]);
     }
 
+    bindPatternPageHost();
+    patternExtensions().applySoftKeys(BuiltinPage::Pattern::Main);
+    getPatternPageHost().finishSoftKeys();
+
     display.synchronizeRefresh();
 }
 
@@ -1794,6 +1804,19 @@ void cPatternEditor::showActualParamOnBar(bool forceShow)
             rightTitleBarLabel[35] = 0;
             break;
         }
+        case cPatternEditor::EditExt:
+        {
+            PatternColumn* column = extensionCatalog().patternColumnAt(0);
+            const char* header = (column != nullptr) ? column->header() : "Ext";
+            if (lastTitleBarParam == EditExt && !forceShow &&
+                strcmp(rightTitleBarLabel, header != nullptr ? header : "Ext") == 0)
+            {
+                return;
+            }
+            strncpy(rightTitleBarLabel, header != nullptr ? header : "Ext", 35);
+            rightTitleBarLabel[35] = 0;
+            break;
+        }
     }
 
     lastTitleBarParam = editParam;
@@ -1839,4 +1862,39 @@ void cPatternEditor::showClockWarning()
     display.refreshControl(bgLabel);
 
     display.synchronizeRefresh();
+}
+
+void cPatternEditor::showModulePageScreen()
+{
+    titleBar->show();
+
+    display.setControlHide(patternControl);
+    display.setControlHide(frameControl);
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        display.setControlStyle2(label[i],
+                                 controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
+        display.setControlValue(label[i], 1);
+        display.setControlShow(label[i]);
+        display.refreshControl(label[i]);
+    }
+
+    display.setControlShow(bgLabel);
+    display.refreshControl(bgLabel);
+
+    moduleListPage.showList();
+
+    display.synchronizeRefresh();
+}
+
+void cPatternEditor::hideModulePageScreen()
+{
+    moduleListPage.hideList();
+}
+
+void cPatternEditor::setModulePageTitle(const char* title)
+{
+    titleBar->show();
+    titleBar->setTitle(title != nullptr ? title : "");
 }

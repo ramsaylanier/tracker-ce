@@ -15,9 +15,13 @@ struct strTrackerPattern
             char note[5];
             char instr[4]; // 3 znak >0 jesli midi
             char fx[2][5];
+            char ext[5]; // optional PatternColumn cell text
         } row[15];
 
     } track[kTrackCount];
+
+    // When set, vertical/horizontal tracker draws a 5th param (ext) and paramCount becomes 5.
+    uint8_t showExtColumn;
 
     //-------------------------------
     // aktualna pozycja kursora :
@@ -73,10 +77,15 @@ struct strTrackerPattern
                 {
                     track[t].row[r].instr[i] = 0;
                 }
+                for (int i = 0; i < 5; i++)
+                {
+                    track[t].row[r].ext[i] = 0;
+                }
             }
             inactive[t] = 0;
             tracksNames[t] = nullptr;
         }
+        showExtColumn = 0;
         actualTrack = 0;
         actualStep = 0;
         middleVisibleStep = 0;
@@ -100,8 +109,8 @@ struct strTrackerPattern
     }
 };
 
-// ilosc znakow parametru
-const uint8_t param_length[4] = { 3, 2, 4, 4 };
+// ilosc znakow parametru (index 4 = optional PatternColumn ext)
+const uint8_t param_length[5] = { 3, 2, 4, 4, 4 };
 
 //--------------------------------------------------------------------
 class cTracker : public cDisplayControl
@@ -143,6 +152,7 @@ class cTracker : public cDisplayControl
     void instruments();
     void fxes1();
     void fxes2();
+    void extColumn();
 
     uint8_t displayMode;
     uint16_t tracksWidth;

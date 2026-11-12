@@ -76,6 +76,18 @@ static void functEncoder(int16_t value);
 static void functSwitchModule(uint8_t button);
 static void functSwitchModeMaster(uint8_t state);
 
+static void functModulePageButton(uint8_t button, uint8_t state);
+static void functModulePageBack();
+static void functModulePageUp();
+static void functModulePageDown();
+static void functModulePageLeft();
+static void functModulePageRight();
+static void functModulePageDelete();
+static void dispatchModulePageInput(InputKind kind,
+                                    uint8_t index = 0,
+                                    int8_t delta = 0,
+                                    SoftKeyButtonState state = SoftKeyButtonState::Press);
+
 // mixer
 static void functSoloMute(uint8_t state);
 static void functSoloMuteTrack(uint8_t n, uint8_t state);
@@ -141,6 +153,12 @@ static elapsedMillis refreshTimer;
 
 void cMasterParams::update()
 {
+    // Module pages own the display; skip mixer meter refresh that would paint over them.
+    if (isModulePageOpen())
+    {
+        shiftHandler();
+        return;
+    }
 
     if (displayType == displayMode::mixer && !keyboardManager.getState())
     {
@@ -258,14 +276,48 @@ void cMasterParams::start(uint32_t options)
 
     sourceModuleButton = options & 0xff;
 
-    // drugi bajt to numer podekranu
+    bindMasterPageHost();
+    ModulePage* pendingPage = nullptr;
+
+    // drugi bajt to numer podekranu (1/2/3 builtin; BuiltinPage::kModulePageIdBase+ = module)
     uint8_t moduleMode = (options >> 8) & 0xff;
-    if (moduleMode == 1)
-        displayType = displayMode::masterValues;
-    else if (moduleMode == 2)
-        displayType = displayMode::mixer;
-    else if (moduleMode == 3)
-        displayType = displayMode::mixerDelayReverb;
+    if (moduleMode == 0)
+    {
+        // No page requested: keep whatever was showing. The Mini menu restarts the screen
+        // with option 0 when it closes, and re-entering Master returns to the last page.
+        pendingPage = activeModulePage != nullptr ? activeModulePage : resumeModulePage;
+    }
+    else
+    {
+        if (moduleMode >= BuiltinPage::kModulePageIdBase)
+        {
+            pendingPage = masterExtensions().pageForMenuOption(moduleMode);
+        }
+        else
+        {
+            // Builtin page 1..3; a module may have replaced it.
+            pendingPage = masterExtensions().replacementFor(moduleMode - 1);
+        }
+
+        if (activeModulePage != nullptr && activeModulePage != pendingPage)
+        {
+            releaseModulePage();
+        }
+
+        if (moduleMode == 1)
+            displayType = displayMode::masterValues;
+        else if (moduleMode == 2)
+            displayType = displayMode::mixer;
+        else if (moduleMode == 3)
+            displayType = displayMode::mixerDelayReverb;
+    }
+    resumeModulePage = nullptr;
+
+    if (pendingPage == nullptr)
+    {
+        // About to show a builtin page; use its replacement if there is one.
+        pendingPage = masterExtensions().replacementFor(currentPageSlot());
+    }
 
     //--------------------------------------------------------------------
     // ustawienie funkcji
@@ -295,7 +347,11 @@ void cMasterParams::start(uint32_t options)
     setMasterScreenFunct();
     activateLabelsBorder();
 
-    if (displayType == displayMode::mixer)
+    if (pendingPage != nullptr && showModulePage(pendingPage))
+    {
+        // module page owns the screen
+    }
+    else if (displayType == displayMode::mixer)
     {
         switchToMixer();
     }
@@ -318,6 +374,7 @@ void cMasterParams::start(uint32_t options)
     }
 
     displayTypeBeforeMasterPress = displayType;
+    modulePageBeforeMasterPress = activeModulePage;
     isDelayScreenBeforeMasterPress = isDelayScreen;
     isReverbScreenBeforeMasterPress = isReverbScreen;
     isLimiterScreenBeforeMasterPress = isLimiterScreen;
@@ -332,6 +389,14 @@ void cMasterParams::start(uint32_t options)
 
 void cMasterParams::stop()
 {
+    // Remember the open module page so coming back to Master lands on it again,
+    // the same way the builtin pages are remembered through displayType.
+    if (activeModulePage != nullptr)
+    {
+        resumeModulePage = activeModulePage;
+        releaseModulePage();
+    }
+
     sequencer.stopManualNotes();
     moduleRefresh = 0;
 }
@@ -341,10 +406,226 @@ void cMasterParams::hideControlsUnderMiniMenu()
     hideControlUnderMenu();
 }
 
+uint8_t cMasterParams::menuModeCount()
+{
+    return masterExtensions().menuModeCount(3);
+}
+
+uint32_t cMasterParams::menuModeOption(uint8_t index)
+{
+    // Master start() reads the mode from the high byte of options.
+    return masterExtensions().menuModeOption(3, index) << 8;
+}
+
+uint8_t cMasterParams::pageSlotCount() const
+{
+    return static_cast<uint8_t>(kBuiltinPageCount + masterExtensions().modulePageCount());
+}
+
+int8_t cMasterParams::modulePageSlot(const ModulePage* page) const
+{
+    return masterExtensions().modeIndexForPage(page, kBuiltinPageCount);
+}
+
+uint8_t cMasterParams::currentPageSlot() const
+{
+    const int8_t slot = modulePageSlot(activeModulePage);
+    if (slot >= 0)
+    {
+        return static_cast<uint8_t>(slot);
+    }
+
+    switch (displayType)
+    {
+        case displayMode::mixer: return BuiltinPage::Master::Mixer;
+        case displayMode::mixerDelayReverb: return BuiltinPage::Master::Sends;
+        default: return BuiltinPage::Master::Master;
+    }
+}
+
 uint8_t cMasterParams::getCurrentModeIdx()
 {
-    return displayType == displayMode::masterValues ? 0
-                                                    : (displayType == displayMode::mixer ? 1 : 2);
+    // While another screen is active, report the page start(0) would reopen.
+    const int8_t resumeSlot = activeModulePage == nullptr ? modulePageSlot(resumeModulePage) : -1;
+    return resumeSlot >= 0 ? static_cast<uint8_t>(resumeSlot) : currentPageSlot();
+}
+
+bool cMasterParams::showPageSlot(uint8_t slot)
+{
+    ModulePage* page =
+      slot < kBuiltinPageCount
+        ? masterExtensions().replacementFor(slot)
+        : masterExtensions().modulePageAt(static_cast<uint8_t>(slot - kBuiltinPageCount));
+    if (page != nullptr && showModulePage(page))
+    {
+        return true;
+    }
+    if (slot >= kBuiltinPageCount)
+    {
+        return false;
+    }
+
+    // Builtin page (also the fallback when its replacement refuses to open).
+    if (isModulePageOpen())
+    {
+        releaseModulePage();
+        setMasterScreenFunct();
+    }
+    selectedPlace = 0;
+
+    if (slot == BuiltinPage::Master::Mixer)
+    {
+        switchToMixer();
+    }
+    else if (slot == BuiltinPage::Master::Sends)
+    {
+        switchToMixerDelayReverb();
+    }
+    else if (isDelayScreen)
+        switchToDelayScreen();
+    else if (isReverbScreen)
+        switchToReverbScreen();
+    else if (isLimiterScreen)
+        switchToLimiterScreen();
+    else if (isEqualizerScreen)
+        switchToEqualizerScreen();
+    else
+        switchToMaster();
+
+    return true;
+}
+
+void cMasterParams::bindMasterPageHost()
+{
+    ScreenChrome chrome{};
+    chrome.softLabels = label;
+    chrome.setTitle = [](const char* title) { masterParams.setModulePageTitle(title); };
+    chrome.setListCount = [](uint8_t count) { masterParams.setModulePageListCount(count); };
+    chrome.setListRow = [](uint8_t index, const char* name, const char* value)
+    { masterParams.setModulePageListRow(index, name, value); };
+    chrome.setListFocus = [](uint8_t index, bool editingValue)
+    { masterParams.setModulePageListFocus(index, editingValue); };
+    chrome.refresh = []() { masterParams.refreshModulePage(); };
+    chrome.onClose = []() { masterParams.closeModulePage(); };
+    chrome.isShiftPressed = []()
+    {
+        return masterParams.buttons != nullptr &&
+               masterParams.buttons->isButtonPressed(interfaceButtonShift);
+    };
+    getMasterPageHost().bind(chrome);
+}
+
+bool cMasterParams::showModulePage(ModulePage* page)
+{
+    if (page == nullptr)
+    {
+        return false;
+    }
+
+    bindMasterPageHost();
+    PageHost& host = getMasterPageHost();
+    if (!page->canOpen(host))
+    {
+        if (activeModulePage == page)
+        {
+            releaseModulePage();
+        }
+        return false;
+    }
+
+    if (activeModulePage != nullptr && activeModulePage != page)
+    {
+        releaseModulePage();
+    }
+
+    // A module page replaces the builtin page entirely. Park the builtin state on the plain
+    // Master page so no mixer handler (Shift solo, track rename, meters) draws over it.
+    ip->clearButton(interfaceButtonShift);
+    keyboardManager.deactivateKeyboard();
+    editTrackNameMode = 0;
+    isSolo = false;
+    displayType = displayMode::masterValues;
+    isDelayScreen = false;
+    isReverbScreen = false;
+    isLimiterScreen = false;
+    isEqualizerScreen = false;
+    selectedPlace = 0;
+
+    activeModulePage = page;
+    showModulePageScreen();
+    bindModulePageButtons();
+    page->onShow(host);
+    return true;
+}
+
+void cMasterParams::releaseModulePage()
+{
+    if (activeModulePage == nullptr)
+    {
+        return;
+    }
+
+    activeModulePage->onHide(getMasterPageHost());
+    hideModulePageScreen();
+    activeModulePage = nullptr;
+    ip->clearButton(interfaceButtonInsert);
+}
+
+void cMasterParams::hideModulePage()
+{
+    if (activeModulePage == nullptr)
+    {
+        return;
+    }
+
+    releaseModulePage();
+    selectedPlace = 0;
+    switchToMaster();
+    setMasterScreenFunct();
+}
+
+void cMasterParams::closeModulePage()
+{
+    // A page that replaces the first builtin page is the first page; nothing to go back to.
+    if (isModulePageOpen() && currentPageSlot() != 0)
+    {
+        showPageSlot(0);
+    }
+}
+
+void cMasterParams::bindModulePageButtons()
+{
+    ip->clearButtonsRange(interfaceButton0, interfaceButton7);
+    ip->setButtonObj(interfaceButton0, functModulePageButton);
+    ip->setButtonObj(interfaceButton1, functModulePageButton);
+    ip->setButtonObj(interfaceButton2, functModulePageButton);
+    ip->setButtonObj(interfaceButton3, functModulePageButton);
+    ip->setButtonObj(interfaceButton4, functModulePageButton);
+    ip->setButtonObj(interfaceButton5, functModulePageButton);
+    ip->setButtonObj(interfaceButton6, functModulePageButton);
+    ip->setButtonObj(interfaceButton7, functModulePageButton);
+    ip->setPotObj(interfacePot0, functEncoder);
+    ip->setButtonObj(interfaceButtonUp, buttonPress, functModulePageUp);
+    ip->setButtonObj(interfaceButtonDown, buttonPress, functModulePageDown);
+    ip->setButtonObj(interfaceButtonLeft, buttonPress, functModulePageLeft);
+    ip->setButtonObj(interfaceButtonRight, buttonPress, functModulePageRight);
+    ip->setButtonObj(interfaceButtonDelete, buttonPress, functModulePageDelete);
+    ip->setButtonObj(interfaceButtonInsert, buttonPress, functModulePageBack);
+    ip->setButtonObj(interfaceButtonMiniMenu, functMenu);
+}
+
+void cMasterParams::handleModulePageEncoder(int8_t delta)
+{
+    if (activeModulePage == nullptr || delta == 0)
+    {
+        return;
+    }
+
+    InputEvent event;
+    event.kind = InputKind::Encoder;
+    event.delta = delta;
+    event.shift = buttons != nullptr && buttons->isButtonPressed(interfaceButtonShift);
+    activeModulePage->onInput(getMasterPageHost(), event);
 }
 
 void cMasterParams::setMasterScreenFunct()
@@ -454,6 +735,19 @@ static void functEncoder(int16_t value)
         return;
     }
 #endif
+
+    if (MP->activeModulePage != nullptr)
+    {
+        int8_t step = 0;
+        if (value > 127)
+            step = 127;
+        else if (value < -128)
+            step = -128;
+        else
+            step = static_cast<int8_t>(value);
+        MP->handleModulePageEncoder(step);
+        return;
+    }
 
     if (MP->displayType == cMasterParams::displayMode::mixer)
     {
@@ -1116,33 +1410,26 @@ static void functSwitchModule(uint8_t button)
 
 void cMasterParams::switchScreen()
 {
-    selectedPlace = 0;
-
-    if (displayType == displayMode::masterValues)
+    // Step to the next page, wrapping around; module pages that refuse to open are skipped.
+    const uint8_t count = pageSlotCount();
+    const uint8_t current = currentPageSlot();
+    for (uint8_t step = 1; step <= count; step++)
     {
-        switchToMixer();
-    }
-    else if (displayType == displayMode::mixerDelayReverb)
-    {
-        if (isDelayScreen)
-            switchToDelayScreen();
-        else if (isReverbScreen)
-            switchToReverbScreen();
-        else if (isLimiterScreen)
-            switchToLimiterScreen();
-        else if (isEqualizerScreen)
-            switchToEqualizerScreen();
-        else
-            switchToMaster();
-    }
-    else if (displayType == cMasterParams::displayMode::mixer)
-    {
-        switchToMixerDelayReverb();
+        if (showPageSlot(static_cast<uint8_t>((current + step) % count)))
+        {
+            return;
+        }
     }
 }
 
 void cMasterParams::returnToScreen()
 {
+    // Holding Master peeks at the volume page; go back to the module page it interrupted.
+    if (modulePageBeforeMasterPress != nullptr && showModulePage(modulePageBeforeMasterPress))
+    {
+        return;
+    }
+
     selectedPlace = selectedPlaceBeforeMasterPress;
 
     if (displayTypeBeforeMasterPress == displayMode::mixer)
@@ -2141,6 +2428,7 @@ static void functSwitchModeMaster(uint8_t state)
     if (state == buttonPress)
     {
         MP->displayTypeBeforeMasterPress = MP->displayType;
+        MP->modulePageBeforeMasterPress = MP->activeModulePage;
         MP->isDelayScreenBeforeMasterPress = MP->isDelayScreen;
         MP->isReverbScreenBeforeMasterPress = MP->isReverbScreen;
         MP->isLimiterScreenBeforeMasterPress = MP->isLimiterScreen;
@@ -2157,7 +2445,14 @@ static void functSwitchModeMaster(uint8_t state)
         {
             MP->showMasterVolumeOnHold = false;
             MP->selectedPlace = 0;
-            MP->switchToMaster();
+            if (MP->isModulePageOpen())
+            {
+                MP->hideModulePage();
+            }
+            else
+            {
+                MP->switchToMaster();
+            }
         }
     }
     else if (state == buttonRelease)
@@ -2184,6 +2479,8 @@ static void functSwitchModeMaster(uint8_t state)
                 MP->isLimiterScreen = MP->isLimiterScreenBeforeMasterPress;
                 MP->isEqualizerScreen = MP->isEqualizerScreenBeforeMasterPress;
                 MP->selectedPlace = MP->selectedPlaceBeforeMasterPress;
+                // The hold closed the module page to show the volume; reopen it next time.
+                MP->resumeModulePage = MP->modulePageBeforeMasterPress;
 
                 if (MP->sourceModuleButton == interfaceButtonSampleRec)
                 {
@@ -2196,6 +2493,62 @@ static void functSwitchModeMaster(uint8_t state)
             }
         }
     }
+}
+
+static void dispatchModulePageInput(InputKind kind,
+                                    uint8_t index,
+                                    int8_t delta,
+                                    SoftKeyButtonState state)
+{
+    ModulePage* page = MP->activeModulePage;
+    if (page == nullptr)
+    {
+        return;
+    }
+
+    InputEvent event;
+    event.kind = kind;
+    event.index = index;
+    event.state = state;
+    event.delta = delta;
+    event.shift = MP->buttons != nullptr && MP->buttons->isButtonPressed(interfaceButtonShift);
+    page->onInput(getMasterPageHost(), event);
+}
+
+static void functModulePageButton(uint8_t button, uint8_t state)
+{
+    dispatchModulePageInput(InputKind::SoftKey, button, 0, static_cast<SoftKeyButtonState>(state));
+}
+
+static void functModulePageBack()
+{
+    dispatchModulePageInput(InputKind::Back);
+    MP->closeModulePage();
+}
+
+static void functModulePageUp()
+{
+    dispatchModulePageInput(InputKind::Navigate, 0, -1);
+}
+
+static void functModulePageDown()
+{
+    dispatchModulePageInput(InputKind::Navigate, 0, 1);
+}
+
+static void functModulePageLeft()
+{
+    dispatchModulePageInput(InputKind::HNavigate, 0, -1);
+}
+
+static void functModulePageRight()
+{
+    dispatchModulePageInput(InputKind::HNavigate, 0, 1);
+}
+
+static void functModulePageDelete()
+{
+    dispatchModulePageInput(InputKind::Clear);
 }
 
 //======================================================================================================================

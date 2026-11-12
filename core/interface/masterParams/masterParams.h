@@ -1,8 +1,11 @@
 #ifndef INTERFACE_MASTERPARAMS_H_
 #define INTERFACE_MASTERPARAMS_H_
 
+#include "core/moduleListPageSupport.h"
+#include "core/modulePageHost.h"
 #include "core/modulesBase.h"
 #include "mtKeyboardManager.h"
+#include "sdk/ModulePage.h"
 
 #include "mtStructs.h"
 
@@ -23,6 +26,8 @@ class cMasterParams : public ModuleBase
     virtual void hideControlsUnderMiniMenu();
 
     virtual uint8_t getCurrentModeIdx();
+    virtual uint8_t menuModeCount() override;
+    virtual uint32_t menuModeOption(uint8_t index) override;
 
     cMasterParams()
     {
@@ -78,7 +83,7 @@ class cMasterParams : public ModuleBase
     {
         masterValues,
         mixer,
-        mixerDelayReverb
+        mixerDelayReverb,
     };
 
     displayMode displayType = displayMode::masterValues;
@@ -145,6 +150,51 @@ class cMasterParams : public ModuleBase
     void switchToReverbScreen();
     void switchToLimiterScreen();
     void switchToEqualizerScreen();
+
+    // Module SDK v2 page host (FX Buses and future Master pages).
+    ModulePage* activeModulePage = nullptr;
+    // Page to reopen on the next start(0); set when Master is left with a module page open.
+    ModulePage* resumeModulePage = nullptr;
+    ModulePage* modulePageBeforeMasterPress = nullptr;
+    bool isModulePageOpen() const { return activeModulePage != nullptr; }
+    void bindMasterPageHost();
+    bool showModulePage(ModulePage* page);
+    // Drops the module page and shows the builtin Master page (never a replacement).
+    void hideModulePage();
+    // Back / PageHost::close(): leaves the module page for the first page of the screen.
+    void closeModulePage();
+    // Runs onHide and drops the page without switching to a builtin screen.
+    void releaseModulePage();
+
+    // Master's pages form one list: Master, Track Mixer, Global Mixer (each may be stood
+    // in for by a module page registered with replacePage), then the added module pages.
+    static constexpr uint8_t kBuiltinPageCount = 3;
+    uint8_t pageSlotCount() const;
+    uint8_t currentPageSlot() const;
+    // Slot of a module page, or -1 if it is not registered on Master.
+    int8_t modulePageSlot(const ModulePage* page) const;
+    // Shows the page in `slot`. False if it is a module page that refused to open.
+    bool showPageSlot(uint8_t slot);
+    // Sets the title bar to "<name> <page>/<builtin + module pages>".
+    void setPagedTitle(const char* name, uint8_t pageNumber);
+    char screenTitle[48]{};
+    void showModulePageScreen();
+    void hideModulePageScreen();
+    void bindModulePageButtons();
+    void handleModulePageEncoder(int8_t delta);
+    void setModulePageTitle(const char* title);
+    void setModulePageListCount(uint8_t count) { moduleListPage.setListCount(count); }
+    void setModulePageListRow(uint8_t index, const char* name, const char* value)
+    {
+        moduleListPage.setListRow(index, name, value);
+    }
+    void setModulePageListFocus(uint8_t index, bool editingValue)
+    {
+        moduleListPage.setListFocus(index, editingValue);
+    }
+    void refreshModulePage() { moduleListPage.refresh(); }
+
+    ModuleListPageSupport moduleListPage{};
     void calcLevel(strTrackLevel* level, float value);
     void resetLevel(strTrackLevel* level);
     void resetMixerLevels();

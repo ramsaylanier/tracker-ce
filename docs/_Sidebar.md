@@ -8,6 +8,7 @@
 * **[Wavetable Envelopes & LFOs](wavetable_envelopes)**
 * **[SD Card Image Viewer](image_viewer)**
 * **[Modular Effects (.ptfx)](modular_effects_system)**
+* **[FX Buses (experiment)](fx_buses)**
 
 #### Developer & SDK Guides
 * **[Architecture, Limits & Gotchas](developer_guide)**

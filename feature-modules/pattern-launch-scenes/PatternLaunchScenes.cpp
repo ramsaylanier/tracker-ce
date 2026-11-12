@@ -100,7 +100,7 @@ void PatternLaunchScenes::setActiveSlot(uint8_t idx)
     activeSlot = (idx < kPatternScenesCount) ? idx : 0xFF;
 }
 
-void PatternLaunchScenes::refreshPage(PerformancePageHost& host)
+void PatternLaunchScenes::refreshPage(PageHost& host)
 {
     static const char* const slotLabels[kPatternScenesCount] = {
         "1", "2", "3", "4", "5", "6", "7", "8"
@@ -111,27 +111,27 @@ void PatternLaunchScenes::refreshPage(PerformancePageHost& host)
         // TitleBar stores a pointer — keep this buffer stable.
         static char titleBuf[24];
         snprintf(titleBuf, sizeof(titleBuf), "Patterns - %u", static_cast<unsigned>(activeSlot + 1));
-        host.setPageTitle(titleBuf);
+        host.setTitle(titleBuf);
     }
     else
     {
-        host.setPageTitle(title());
+        host.setTitle(title());
     }
 
     for (uint8_t i = 0; i < kPatternScenesCount; i++)
     {
-        PerformanceLabelState state = PerformanceLabelState::Empty;
+        LabelState state = LabelState::Empty;
         if (i == activeSlot)
         {
-            state = PerformanceLabelState::Active;
+            state = LabelState::Active;
         }
         else if (isFilled(i))
         {
-            state = PerformanceLabelState::Filled;
+            state = LabelState::Filled;
         }
-        host.setScreenLabel(i, slotLabels[i], state);
+        host.setSoftKey(i, slotLabels[i], state);
     }
-    host.finishScreenLabels();
+    host.finishSoftKeys();
 }
 
 bool PatternLaunchScenes::validateHeader() const
@@ -190,7 +190,7 @@ bool PatternLaunchScenes::isFilled(uint8_t idx) const
     return externalRamPatternScenesBank.scenes[idx].name[0] != '\0';
 }
 
-void PatternLaunchScenes::storeScene(PerformancePageHost& host, uint8_t idx, const char* name)
+void PatternLaunchScenes::storeScene(uint8_t idx, const char* name)
 {
     if (idx >= kPatternScenesCount)
     {
@@ -198,7 +198,7 @@ void PatternLaunchScenes::storeScene(PerformancePageHost& host, uint8_t idx, con
     }
 
     strPatternScene& scene = externalRamPatternScenesBank.scenes[idx];
-    host.capturePatternScene(scene);
+    getPerformanceService().capturePatternScene(scene);
 
     memset(scene.name, 0, sizeof(scene.name));
     if (name != nullptr)
@@ -209,43 +209,48 @@ void PatternLaunchScenes::storeScene(PerformancePageHost& host, uint8_t idx, con
     saveToWorkspace();
 }
 
-bool PatternLaunchScenes::recallScene(PerformancePageHost& host, uint8_t idx)
+bool PatternLaunchScenes::recallScene(uint8_t idx)
 {
     if (idx >= kPatternScenesCount || !isFilled(idx))
     {
         return false;
     }
 
-    host.recallPatternScene(externalRamPatternScenesBank.scenes[idx]);
+    getPerformanceService().recallPatternScene(externalRamPatternScenesBank.scenes[idx]);
     setActiveSlot(idx);
     return true;
 }
 
-void PatternLaunchScenes::onShow(PerformancePageHost& host)
+void PatternLaunchScenes::onShow(PageHost& host)
 {
     refreshPage(host);
 }
 
-void PatternLaunchScenes::onHide(PerformancePageHost& host)
+void PatternLaunchScenes::onHide(PageHost& host)
 {
     (void)host;
 }
 
-void PatternLaunchScenes::onScreenButton(PerformancePageHost& host, uint8_t button, uint8_t state)
+void PatternLaunchScenes::onInput(PageHost& host, const InputEvent& event)
 {
-    if (state != kPerformanceButtonPress || button >= kPatternScenesCount)
+    if (event.kind != InputKind::SoftKey)
     {
         return;
     }
 
-    if (host.isShiftPressed())
+    if (event.state != SoftKeyButtonState::Press || event.index >= kPatternScenesCount)
+    {
+        return;
+    }
+
+    if (event.shift || host.isShiftPressed())
     {
         char name[kPerfFxSceneNameLength];
-        snprintf(name, sizeof(name), "Pat %d", button + 1);
-        storeScene(host, button, name);
+        snprintf(name, sizeof(name), "Pat %d", event.index + 1);
+        storeScene(event.index, name);
         refreshPage(host);
     }
-    else if (recallScene(host, button))
+    else if (recallScene(event.index))
     {
         refreshPage(host);
     }

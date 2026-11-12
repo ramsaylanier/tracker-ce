@@ -100,7 +100,7 @@ void MuteBanks::setActiveSlot(uint8_t idx)
     activeSlot = (idx < kMuteBanksCount) ? idx : 0xFF;
 }
 
-void MuteBanks::refreshPage(PerformancePageHost& host)
+void MuteBanks::refreshPage(PageHost& host)
 {
     static const char* const slotLabels[kMuteBanksCount] = {
         "1", "2", "3", "4", "5", "6", "7", "8"
@@ -111,41 +111,42 @@ void MuteBanks::refreshPage(PerformancePageHost& host)
         // TitleBar stores a pointer — keep this buffer stable.
         static char titleBuf[24];
         snprintf(titleBuf, sizeof(titleBuf), "Mutes - %u", static_cast<unsigned>(activeSlot + 1));
-        host.setPageTitle(titleBuf);
+        host.setTitle(titleBuf);
     }
     else
     {
-        host.setPageTitle(title());
+        host.setTitle(title());
     }
 
-    const bool midiPage = host.tracksPage() != 0;
+    PerformanceService& perf = getPerformanceService();
+    const bool midiPage = perf.tracksPage() != 0;
 
     for (uint8_t i = 0; i < kMuteBanksCount; i++)
     {
         // Secondary line: live mute for the track under this soft button
         // (sample page 1-8 or MIDI page 1-8).
         const bool muted =
-          midiPage ? host.isMidiTrackMuted(i) : host.isSampleTrackMuted(i);
+          midiPage ? perf.isMidiTrackMuted(i) : perf.isSampleTrackMuted(i);
         const char* muteText = muted ? "Mute" : "Unmute";
 
-        PerformanceLabelState state = PerformanceLabelState::Empty;
+        LabelState state = LabelState::Empty;
         if (i == activeSlot)
         {
             // Active bank wins; mute status still shown on the secondary line.
-            state = PerformanceLabelState::Active;
+            state = LabelState::Active;
         }
         else if (muted)
         {
-            state = PerformanceLabelState::Muted;
+            state = LabelState::Muted;
         }
         else if (isFilled(i))
         {
-            state = PerformanceLabelState::Filled;
+            state = LabelState::Filled;
         }
 
-        host.setScreenLabel(i, slotLabels[i], state, muteText);
+        host.setSoftKey(i, slotLabels[i], state, muteText);
     }
-    host.finishScreenLabels();
+    host.finishSoftKeys();
 }
 
 bool MuteBanks::validateHeader() const
@@ -202,7 +203,7 @@ bool MuteBanks::isFilled(uint8_t idx) const
     return externalRamMuteBanksBank.scenes[idx].name[0] != '\0';
 }
 
-void MuteBanks::storeScene(PerformancePageHost& host, uint8_t idx, const char* name)
+void MuteBanks::storeScene(uint8_t idx, const char* name)
 {
     if (idx >= kMuteBanksCount)
     {
@@ -210,7 +211,7 @@ void MuteBanks::storeScene(PerformancePageHost& host, uint8_t idx, const char* n
     }
 
     strMuteScene& scene = externalRamMuteBanksBank.scenes[idx];
-    host.captureMuteScene(scene);
+    getPerformanceService().captureMuteScene(scene);
 
     memset(scene.name, 0, sizeof(scene.name));
     if (name != nullptr)
@@ -221,43 +222,48 @@ void MuteBanks::storeScene(PerformancePageHost& host, uint8_t idx, const char* n
     saveToWorkspace();
 }
 
-bool MuteBanks::recallScene(PerformancePageHost& host, uint8_t idx)
+bool MuteBanks::recallScene(uint8_t idx)
 {
     if (idx >= kMuteBanksCount || !isFilled(idx))
     {
         return false;
     }
 
-    host.recallMuteScene(externalRamMuteBanksBank.scenes[idx]);
+    getPerformanceService().recallMuteScene(externalRamMuteBanksBank.scenes[idx]);
     setActiveSlot(idx);
     return true;
 }
 
-void MuteBanks::onShow(PerformancePageHost& host)
+void MuteBanks::onShow(PageHost& host)
 {
     refreshPage(host);
 }
 
-void MuteBanks::onHide(PerformancePageHost& host)
+void MuteBanks::onHide(PageHost& host)
 {
     (void)host;
 }
 
-void MuteBanks::onScreenButton(PerformancePageHost& host, uint8_t button, uint8_t state)
+void MuteBanks::onInput(PageHost& host, const InputEvent& event)
 {
-    if (state != kPerformanceButtonPress || button >= kMuteBanksCount)
+    if (event.kind != InputKind::SoftKey)
     {
         return;
     }
 
-    if (host.isShiftPressed())
+    if (event.state != SoftKeyButtonState::Press || event.index >= kMuteBanksCount)
+    {
+        return;
+    }
+
+    if (event.shift || host.isShiftPressed())
     {
         char name[kPerfFxSceneNameLength];
-        snprintf(name, sizeof(name), "Mute %d", button + 1);
-        storeScene(host, button, name);
+        snprintf(name, sizeof(name), "Mute %d", event.index + 1);
+        storeScene(event.index, name);
         refreshPage(host);
     }
-    else if (recallScene(host, button))
+    else if (recallScene(event.index))
     {
         refreshPage(host);
     }

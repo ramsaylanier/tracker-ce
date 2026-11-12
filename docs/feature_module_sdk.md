@@ -1,31 +1,40 @@
-# Feature Module SDK — Developer Guide
+# Feature Module SDK v2 — Developer Guide
 
-The **Feature Module SDK** (`core/modules/`) lets you add compile-time firmware features that live in **this repo, another directory, or a separate repository**. Modules are ordinary C++ compiled from `FEATURE_MODULE_DIRS` and linked into the `.ptf` image.
+The **Feature Module SDK** (`core/modules/sdk/`) lets you add compile-time firmware features that live in **this repo, another directory, or a separate repository**. Modules are ordinary C++ compiled from `FEATURE_MODULE_DIRS` and linked into the `.ptf` image.
 
 There is **no SD-card code loader** for feature modules (use `.ptfx` for Sample Editor DSP plugins).
-
-This is the third extension path in Tracker CE:
 
 | Extension path | Delivery | Typical use |
 | :--- | :--- | :--- |
 | **`.ptfx` Sample Editor plugins** | SD card binary | Offline sample DSP / generators |
 | **PolySynth Custom Synth SDK** | Compile into `.ptf` | Real-time synth engines (Tracker+ / Mini) |
-| **Feature Module SDK** | Compile into `.ptf` from external dirs | Sidecars, Performance pages, Song columns, pattern Step FX |
+| **Feature Module SDK v2** | Compile into `.ptf` from external dirs | Pages, softkeys, columns, Step FX, Config, sidecars |
 
 ---
 
 ## 1. What a module can do
 
-| Capability | SDK surface | Who owns what |
-| :--- | :--- | :--- |
-| **Project sidecar** | `ModuleSidecar` + lifecycle hooks | Module: file format + bank. Firmware: calls open/save/clear. |
-| **Performance Mode page** | `PerformancePage` + `PerformancePageHost` | Module: UI labels + store/recall. Firmware: page cycle + screen buttons. |
-| **Song Mode list column / mode page** | `ScreenExtension` / `SongListColumn` / `SongModePage` + `SongScreenHost` | Module: column and/or full mode page. Firmware: chrome, menu dots, input dispatch. |
-| **Pattern Step FX** | `PatternStepFxInfo` + `onPatternStepFx` | Module: letter, name, range, behavior. Firmware: runtime FX catalog + sequencer dispatch. |
+| Capability | Registrar / API |
+| :--- | :--- |
+| **Add a page** to Pattern / Song / Instrument / Master / Performance | `addPage(ScreenId, ModulePage*, order)` |
+| **Replace a builtin Master page** | `replacePage(ScreenId::Master, builtinPageId, ModulePage*)` |
+| **Add / override softkeys** on a builtin page | `addSoftKey(ScreenId, builtinPageId, slot, SoftKeyHandler*)` |
+| **Open a module page from a softkey** | `SoftKeyHandler::pageToOpen()` (Instrument Effects uses this) |
+| **Song list column** | `addSongColumn(SongColumn*)` — first registration wins |
+| **Pattern step column** | `addPatternColumn(PatternColumn*)` — first registration wins |
+| **Pattern Step FX** | `addPatternStepFx(info, handler)` |
+| **Config → Modules** | `addConfigItem(ConfigItem*)` |
+| **Lifecycle events** | `addEventListener(ModuleEventListener*)` |
+| **Project sidecar** | `ModuleSidecar` + open/save/clear hooks |
+| **Sample FX query** | `setSampleInstrumentFxProvider` from `init` |
 
-**Boundary rule:** change core only to grow the **host/dispatcher** surface. Product behavior (scene banks, `"FX"` / `"Scene"` strings, recall logic) stays in the module.
+**Boundary rule:** change core only to grow the **host/dispatcher** surface. Product behavior stays in the module directory.
 
-Do **not** include from an external module: `performanceMode.h`, `songEditor.h`, `display.h`, File Manager headers, or sequencer internals. Depend on SDK headers + `Platform.h` / `cr_section_macros.h` for `__NOINIT(EXTERNAL_RAM)`.
+Do **not** include from a module: `performanceMode.h`, `songEditor.h`, `display.h`, File Manager headers, `mtStructs.h`, `mtAudioEngine.h`, or sequencer internals. Depend on SDK headers + `Platform.h` / `cr_section_macros.h`. Enforce with:
+
+```bash
+python3 scripts/check_module_includes.py
+```
 
 ---
 
@@ -38,327 +47,34 @@ FEATURE_MODULE_DIRS ──► module.mk + sources
  generate_registry.py ──► feature_modules_registry.cpp
         │
         ▼
- FeatureModuleRegistry
-        ├── FileManager lifecycle (init / workspace / project)
-        ├── PerformancePage cycle (Shift+Perf / Mini Middle)
-        ├── Song list column / mode pages (getSongListColumn, getSongModePage, poll/notify)
-        └── Pattern Step FX catalog (merged into picker at init)
+ FeatureModuleRegistry::registerAllExtensions()
+        │
+        ▼
+ ExtensionCatalog (static arrays)
+        ├── ScreenExtensionPoint per ModuleBase screen
+        │     ├── Module pages (Mini dots / cycle / InputEvent)
+        │     └── SoftKey overrides on builtin pages
+        ├── SongColumn / PatternColumn (capacity 1 each; first-wins)
+        ├── Pattern Step FX catalog
+        └── Config "Modules" group
 ```
 
-Modules are **not** registered by editing `core/` by hand. Each module directory has a `module.mk`; the build generates `registerFeatureModules()` so every listed instance is linked (needed because `libTracker.a` otherwise drops unreferenced objects).
+Modules register through `FeatureModule::registerExtensions(ExtensionRegistrar&)`. Core screens own a `ScreenExtensionPoint` + shared `ModulePageHost` (widget kit). List-style module pages share `ModuleListPageSupport` for title/list/softkey chrome. Domain work goes through services (`getPerformanceService()`, `getSongService()`, `getEngineService()`, …).
 
-SDK headers (all under [`core/modules/`](../core/modules/)):
-
-| Header | Role |
-| :--- | :--- |
-| [`FeatureModule.h`](../core/modules/FeatureModule.h) | Root contract + `PerformancePage` |
-| [`PerformanceHost.h`](../core/modules/PerformanceHost.h) | Performance Mode host + scene snapshot structs |
-| [`ScreenHost.h`](../core/modules/ScreenHost.h) | Song (and future) screen extensions |
-| [`PatternStepFx.h`](../core/modules/PatternStepFx.h) | Pattern Step FX export descriptor |
-| [`ModuleSidecar.h`](../core/modules/ModuleSidecar.h) | Workspace/project `.bin` path + read/write |
+Changing `FEATURE_MODULE_DIRS` regenerates the registry via a stamp file (empty dirs yield an empty registry — no stale includes).
 
 ---
 
 ## 3. External module layout
 
 ```text
-my-module/                         # any path, any repo
+my-module/
 ├── module.mk
 ├── MyModule.h
 └── MyModule.cpp
 ```
 
 ```makefile
-MODULE_NAME        := my-module
-MODULE_TITLE       := My Module
-MODULE_DESCRIPTION := Short blurb shown in make select
-MODULE_ORDER       := 40              # Performance page + FX catalog order (lower first)
-MODULE_INSTANCE    := myModule        # C++ object symbol
-MODULE_HEADER      := MyModule.h
-MODULE_SRCS        := MyModule.cpp    # optional; defaults to all *.cpp
-```
-
-### Interactive picker
-
-```bash
-make select
-# or:
-python3 scripts/build_with_modules.py
-```
-
-Scans [`feature-modules/`](../feature-modules/) for `module.mk`, toggles modules, picks `all` / `original` / `plus` / `mini`, then runs `make` with `FEATURE_MODULE_DIRS`. Selection is stored in `.feature-modules-selection`.
-
-```bash
-make list-modules
-python3 scripts/build_with_modules.py --modules performance-fx-scenes --target plus
-```
-
-### Non-interactive build
-
-```bash
-# Default: every feature-modules/*/module.mk
-make all
-
-# Explicit paths (space-separated)
-make all FEATURE_MODULE_DIRS="$HOME/src/my-tracker-module /other/repo/another-module"
-
-# Firmware only
-make all FEATURE_MODULE_DIRS=
-```
-
----
-
-## 4. `FeatureModule` contract
-
-```cpp
-class FeatureModule
-{
-  public:
-    virtual const char* id() const = 0; // sidecar basename, e.g. "perfscenes"
-
-    virtual void init(FileSystem* fs) {}
-    virtual void onWorkspaceClear() {}
-    virtual void onWorkspaceLoad() {}
-    virtual void onProjectOpen(const char* projectPath, const char* projectName) {}
-    virtual void onProjectSave(const char* projectPath, const char* projectName) {}
-    virtual void update() {} // main thread only
-
-    virtual PerformancePage* performancePage() { return nullptr; }
-    virtual ScreenExtension* screenExtension() { return nullptr; }
-
-    virtual uint8_t patternStepFxCount() const { return 0; }
-    virtual const PatternStepFxInfo* patternStepFx(uint8_t index) const { return nullptr; }
-    virtual bool onPatternStepFx(uint8_t typeId, uint8_t value) { return false; }
-};
-```
-
-| Hook | Called from |
-| :--- | :--- |
-| `init` | `cFileManager::init` after `registerFeatureModules` (then FX catalog rebuild) |
-| `onWorkspaceClear` | New project / workspace clear |
-| `onWorkspaceLoad` | Workspace project load |
-| `onProjectOpen` / `onProjectSave` | Project open / save |
-| `update` | `TrackerImpl::update` via `featureModules.updateAll()` (main thread) |
-| `performancePage` | Performance Mode page cycle |
-| `screenExtension` | Song column lookup / host helpers |
-| `patternStepFx*` | Catalog merge at init |
-| `onPatternStepFx` | Sequencer step FX playback (main thread) |
-
-All of `update`, `onSlotStart`, and `onPatternStepFx` are **main thread only**. Do not call into the audio callback / ISR.
-
----
-
-## 5. Project sidecars (`ModuleSidecar`)
-
-Paths from `id()`:
-
-* Workspace: `Workspace/<id>.bin`
-* Project: `<projectPath>/<projectName>/<id>.bin`
-
-Rules:
-
-1. Magic + version header
-2. Struct size **4-byte aligned** (FatFs DMA on IMX)
-3. Bank in `__NOINIT(EXTERNAL_RAM)`, cleared explicitly in `init` / `onWorkspaceClear`
-4. Bad magic/version → clear the bank
-
-Keep filenames stable when migrating. Scenes uses `id() == "perfscenes"` → `perfscenes.bin`.
-
----
-
-## 6. Performance Mode page
-
-```cpp
-class PerformancePage
-{
-  public:
-    virtual const char* title() const = 0;
-    virtual void onShow(PerformancePageHost& host) = 0;
-    virtual void onHide(PerformancePageHost& host) = 0;
-    virtual void onScreenButton(PerformancePageHost& host, uint8_t button, uint8_t state) = 0;
-};
-```
-
-`PerformancePageHost` (firmware) is the only UI/engine API a page should call:
-
-* `setPageTitle`, `setScreenLabel(index, text, state, text2=nullptr)`, `finishScreenLabels`
-  * `PerformanceLabelState`: `Empty` / `Filled` / `Active` / `Muted`
-  * `Active` defaults secondary text to `"Active"` when `text2` is omitted
-* `restoreTrackLabels`, `refreshFxRack`, `isShowingFxRack`, `isActivePerformancePage`
-* `isShiftPressed`, `tracksPage`, `isSampleTrackMuted`, `isMidiTrackMuted`
-* `captureFxScene` / `recallFxScene` (`strPerfScene` — 12 FX slots)
-* `capturePatternScene` / `recallPatternScene` (`strPatternScene`)
-* `captureMuteScene` / `recallMuteScene` (`strMuteScene`)
-* Engine FX catalog / apply (usable **without** a Performance page): `performanceFxCount`, `performanceFxName`, `performanceFxMin` / `Max`, `applyPerformanceFx`, `clearPerformanceFx`
-
-`onHide` must **not** call `restoreTrackLabels` — firmware restores the track strip only when leaving module pages entirely. Page-to-page cycling calls `onHide` then the next page’s `onShow`.
-
-Controls:
-
-* Desktop: **Shift + Performance** cycles registered pages in `MODULE_ORDER`, then returns to the track strip
-* Tracker Mini: **Middle** cycles the same way
-* Screen buttons `0`–`7` → `onScreenButton`
-
-Typical pattern: Shift + button stores; button alone recalls. **Never** call display helpers from `onPatternStepFx` / `onSlotStart` — apply engine state only.
-
-New top-level screens still use `ModuleBase` and the fixed `Interface::modules[]` table (slot `11` reserved for firmware).
-
----
-
-## 7. Screen extensions — Song Mode
-
-Feature modules extend **existing** `ModuleBase` screens through `screenExtension()`. They do not add top-level screens.
-
-```cpp
-enum class ScreenId : uint8_t { Song = 0 };
-
-class ScreenExtension
-{
-  public:
-    virtual ScreenId screen() const = 0;
-    virtual SongListColumn* asSongListColumn() { return nullptr; }
-    virtual SongModePage* asSongModePage() { return nullptr; }
-};
-```
-
-### Song list column
-
-One optional column on the Song playlist (between pattern list and tempo). Cells stay visible during playback; **focus (red frame) and encoder edit require Song Rec / edit mode**. Firmware owns layout/navigation and frame geometry; the module owns meaning. The column is not shown on a Song mode page (playlist chrome is hidden).
-
-| Module API | Role |
-| :--- | :--- |
-| `header()` / `formatCell()` | Drawn by `cSongPlayer` (cell text ≤ `kCellTextMax` = 4) |
-| `focusEncoderLabel()` | Pattern +/- label while the column is focused |
-| `onEncoder` / `onClear` | Rec-mode input via `SongScreenHost` |
-| `onInserted` / `onRemoved` / `clearAll` | Stay aligned with Add/Delete Slot and MOD/IT import |
-| `onSlotStart` | Main-thread hook when song playback enters a row |
-
-### Song mode page
-
-Optional full page under **Song** (PerformancePage-style). One guest type owns **Mini-menu option + UI + input** via `SongModePage` / `asSongModePage()` — **do not** edit `interfaceMenuPopup.cpp` or put product logic in `fSongEdit.cpp`.
-
-| Module API | Role |
-| :--- | :--- |
-| `startOption()` | Passed to `cSongEditor::start()` (`>= 2`; `0` = dismiss preserve, `1` = playlist) |
-| `canOpen` / `onShow` / `onHide` / `onBack` | Enter / leave |
-| `onEncoder` | Encoder and Mini +/- |
-| `onScreenButton` | Soft buttons `0`–`7` |
-| `onNavigate` | Up/Down; default no-op |
-| `onHorizontalNavigate` | Left/Right; default no-op |
-| `onClearFocused` | Delete; default no-op |
-
-Song firmware only: hide playlist / show param-value list chrome, bind inputs, dispatch to `activeModePage`. Menu dots come from `menuModeCount` / `menuModeOption` (playlist + registered pages; **no dots if no mode pages**).
-
-Host helpers: `openModePage` / `closeModePage` / `isModePageOpen`, `setEditorTitle`, `setScreenLabel` / `finishScreenLabels`, `setEditorListCount` / `setEditorListRow` / `setEditorListFocus`, `refreshEditor`.
-
-Firmware helpers (modules do not call these; Song/FileManager/registry do):
-
-* `pollSongListColumnSlotStarts()` — from `updateAll()`; latches `playlistPos` and calls `onSlotStart`
-* `notifySongPlaylistReplaced()` — MOD/IT import clears column data via `clearAll()`
-
-`getSongListColumn()` / `getSongModePage(i)` return Song extensions (`MODULE_ORDER`). Today the host supports **zero or one** column and **zero or more** mode pages (one active at a time; Insert opens the first registered page when none is active).
-
-`SongListColumn::kSongSlotCount` must match `SONG_MAX` (255).
-
----
-
-## 8. Pattern Step FX exports
-
-Modules can add entries to the pattern editor FX list (alongside Roll, Slice, Position, …) **without** editing core `fxNames` / `fxIDs` tables.
-
-```cpp
-// PatternStepFx.h
-static constexpr uint8_t kPatternStepFxModuleIdBase = 128;
-static constexpr uint8_t kPatternStepFxModuleIdLast = 143; // 16 slots
-
-struct PatternStepFxInfo
-{
-    uint8_t typeId;       // stored in the pattern; stable across builds
-    char letter;          // picker glyph, e.g. 'N'
-    const char* name;     // host formats "N - FX Scene"
-    const char* shortName;
-    const char* description;
-    uint8_t minValue;
-    uint8_t maxValue;
-    uint8_t defaultValue;
-};
-```
-
-### Rules
-
-* `typeId` must be in **`[128, 143]`**. Builtin sequencer FX stay `0..50` — do not reuse them.
-* Pick a **stable** id for your module (e.g. `128` for Perf FX Scene). Patterns store this id; changing it orphans old steps.
-* `letter` must be unique vs builtins and other modules (duplicates are skipped at init).
-* `onPatternStepFx` runs on the **main thread** (same family as Tempo / Break), not in `playerEngine::seqFx`.
-* Return `true` if you handled the `typeId` (even if the value was out of range); otherwise `false` so another module can try.
-* After `registerFeatureModules` + `initAll`, firmware rebuilds the runtime FX catalog (module entries appear **before** the hidden Break pattern entry).
-
-### Minimal export example
-
-```cpp
-static const PatternStepFxInfo kMyFx = {
-    129,              // your reserved id in 128..143
-    'O',
-    "My Pattern FX",
-    "My FX",
-    "Does something on this step.",
-    0,
-    100,
-    0,
-};
-
-uint8_t patternStepFxCount() const override { return 1; }
-const PatternStepFxInfo* patternStepFx(uint8_t i) const override
-{
-    return i == 0 ? &kMyFx : nullptr;
-}
-bool onPatternStepFx(uint8_t typeId, uint8_t value) override
-{
-    if (typeId != 129)
-        return false;
-    // ... main-thread behavior using value ...
-    return true;
-}
-```
-
----
-
-## 9. Bundled modules
-
-| Directory | What it adds | `id()` / sidecar | `MODULE_ORDER` |
-| :--- | :--- | :--- | ---: |
-| [`performance-fx-scenes/`](../feature-modules/performance-fx-scenes) | Performance page **Scenes** (rack snapshots) | `perfscenes` | 10 |
-| [`pattern-launch-scenes/`](../feature-modules/pattern-launch-scenes) | Performance page **Patterns** | `patternscenes` | 20 |
-| [`mute-banks/`](../feature-modules/mute-banks) | Performance page **Mutes** | `mutebanks` | 30 |
-| [`song-fx-scenes/`](../feature-modules/song-fx-scenes) | Song column **FX**; Song menu FX page; pattern FX **N - FX Scene** (id 128, values 1–8) | `songfxscenes` | 15 |
-
-Bundled modules use only SDK headers + `ModuleSidecar` + hosts.
-
----
-
-## 10. Skeleton module
-
-```cpp
-// MyModule.h
-#pragma once
-#include "FeatureModule.h"
-
-class MyModule : public FeatureModule
-{
-  public:
-    const char* id() const override { return "myfeature"; }
-    void init(FileSystem* fs) override;
-    void onWorkspaceClear() override;
-    void onWorkspaceLoad() override;
-    void onProjectOpen(const char* projectPath, const char* projectName) override;
-    void onProjectSave(const char* projectPath, const char* projectName) override;
-};
-
-extern MyModule myModule;
-```
-
-```makefile
-# module.mk
 MODULE_NAME        := my-module
 MODULE_TITLE       := My Module
 MODULE_DESCRIPTION := Short blurb shown in make select
@@ -370,17 +86,92 @@ MODULE_SRCS        := MyModule.cpp
 
 ```bash
 make select
-# or:
-make all FEATURE_MODULE_DIRS="/absolute/path/to/my-module"
+make all FEATURE_MODULE_DIRS="/path/to/my-module"
+make all FEATURE_MODULE_DIRS=   # firmware only
+```
+
+Directories under `feature-modules/` whose names start with `_` (e.g. `_example`) are **not** selected by default.
+
+---
+
+## 4. `FeatureModule` contract
+
+```cpp
+class FeatureModule
+{
+  public:
+    virtual const char* id() const = 0;
+    virtual void registerExtensions(ExtensionRegistrar& r) {}
+    virtual void init(FileSystem* fs) {}
+    virtual void onWorkspaceClear() {}
+    virtual void onWorkspaceLoad() {}
+    virtual void onProjectOpen(const char* path, const char* name) {}
+    virtual void onProjectSave(const char* path, const char* name) {}
+    virtual void update() {} // main thread only
+};
 ```
 
 ---
 
-## 11. Out of scope (this version)
+## 5. Pages & softkeys
 
-* SD-card executable / dynamically loaded feature modules (use `.ptfx` for Sample Editor DSP)
-* Audio-callback / ISR module hooks (sample `seqFx` stays builtin-only)
-* Multiple Song list columns in the host UI (API is per-column; host still takes the first)
-* Dynamic Performance Mode **rack** FX id tables (`performanceFx.cpp` remains append-only)
-* Letting modules create new top-level `ModuleBase` screens
-* Synth engine authoring (PolySynth SDK)
+```cpp
+class ModulePage
+{
+    virtual const char* title() const = 0;
+    virtual bool canOpen(PageHost& host) const;
+    virtual void onShow(PageHost& host) = 0;
+    virtual void onHide(PageHost& host) = 0;
+    virtual void onInput(PageHost& host, const InputEvent& event) = 0;
+};
+```
+
+`PageHost` is the widget kit: `setTitle`, `setSoftKey` / `finishSoftKeys`, `setListCount` / `setListRow` / `setListFocus`, `refresh`, `close`, `isShiftPressed`, `device()`.
+
+The host copies every string it is given, so a module can format into a stack buffer. Pass only the page name to `setTitle`: the screen adds its own page counter where it has one (Master shows `FX Buses 4/4`).
+
+`InputEvent` carries `kind` (`SoftKey`, `Encoder`, `Navigate`, `HNavigate`, `Clear`, `Back`), `index`, `state`, `delta`, `shift`.
+
+Softkeys on builtin pages:
+
+```cpp
+registrar.addSoftKey(ScreenId::Instrument, BuiltinPage::Instrument::Effects, 5, &myHandler);
+```
+
+To open a specific module page from that softkey (instead of relying on page index), override `SoftKeyHandler::pageToOpen()` and return the `ModulePage*`. Instrument Effects calls this after a handled press.
+
+Pattern module pages via `addPage(ScreenId::Pattern, …)` are supported (see `_example`). No production Pattern page ships yet.
+
+---
+
+## 6. Columns, Step FX, Config, Services
+
+- **SongColumn / PatternColumn** — capacity is **1** each (`kMaxSongColumns` / `kMaxPatternColumns`). A second registration fails; only the first is shown (**first-wins**). Song cells ≤ 4 chars; Pattern optional field after FX2 (`selectedParam == 4`).
+- **Pattern Step FX** — type ids `128..143`; handler is a function pointer. It is called from the sequencer tick inside the audio buffer callback, not the main loop, so keep it short and do not do file I/O or draw from it.
+- **ConfigItem** / **ModuleEventListener** — wired and used by `_example`; optional for production modules.
+- **Services** — `getPerformanceService()` (scenes / FX rack / mute queries), `getSongService()` (`selectedSlot`), `getEngineService()` (instrument FX fields + `notifyInstrumentFxDirty`).
+- **`replacePage`** — **Master-only**. Song / Pattern accept `addPage` and soft keys / columns, but do not replace their builtin views.
+
+---
+
+## 7. Bundled modules
+
+| Directory | Hooks |
+| :--- | :--- |
+| `performance-fx-scenes/` | Performance page **Scenes** |
+| `pattern-launch-scenes/` | Performance page **Patterns** |
+| `mute-banks/` | Performance page **Mutes** |
+| `song-fx-scenes/` | Song column + Song page + Step FX `N` |
+| `fx-buses/` | Master + Instrument editor pages (separate UI state) + Instrument Effects softkeys + sample FX provider |
+| `_example/` | Hook demo: Performance page, Pattern page, softkey, Config, events (not built by default) |
+
+---
+
+## 8. Out of scope
+
+- SD-card executable feature modules
+- Audio-callback / ISR module hooks beyond `SampleInstrumentFxQuery`
+- Multi-column cycling (hosts keep first-wins only)
+- Song / Pattern `replacePage` hosts
+- New top-level `ModuleBase` screens (slot 11 remains reserved)
+- Synth engine authoring (PolySynth SDK)

@@ -871,6 +871,16 @@ void audioEngine::forceUsbGainOutsideTheRecorder()
 }
 #endif
 
+void audioEngine::setRefreshBitForInstrument(uint8_t sampleInstrIdx, uint32_t mask)
+{
+    for (uint8_t track = 0; track < kVoices; track++)
+    {
+        if (instrumentPlayer[track].currentInstrument_idx != sampleInstrIdx)
+            continue;
+        instrumentPlayer[track].setRefreshBit(mask);
+    }
+}
+
 void audioEngine::refreshTrackVolume()
 {
     for (uint8_t track = 0; track < 8; track++)

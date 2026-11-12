@@ -1,7 +1,10 @@
 #ifndef INTERFACE_INSTRUMENTEDITOR_H_
 #define INTERFACE_INSTRUMENTEDITOR_H_
 
+#include "core/moduleListPageSupport.h"
+#include "core/modulePageHost.h"
 #include "core/modulesBase.h"
+#include "sdk/ModulePage.h"
 
 #include "mtStructs.h"
 
@@ -360,6 +363,30 @@ class cInstrumentEditor : public ModuleBase
 
     bool isEffectsWindow;
     uint8_t selectedPlaceSends;
+
+    // Module SDK v2 page host (FX Buses and future Instrument pages).
+    ModulePage* activeModulePage = nullptr;
+    bool isModulePageOpen() const { return activeModulePage != nullptr; }
+    void bindInstrumentPageHost();
+    void showModulePage(ModulePage* page);
+    void hideModulePage();
+    void showModulePageScreen();
+    void hideModulePageScreen();
+    void bindModulePageButtons();
+    void handleModulePageEncoder(int8_t delta);
+    void setModulePageTitle(const char* title);
+    void setModulePageListCount(uint8_t count) { moduleListPage.setListCount(count); }
+    void setModulePageListRow(uint8_t index, const char* name, const char* value)
+    {
+        moduleListPage.setListRow(index, name, value);
+    }
+    void setModulePageListFocus(uint8_t index, bool editingValue)
+    {
+        moduleListPage.setListFocus(index, editingValue);
+    }
+    void refreshModulePage() { moduleListPage.refresh(); }
+
+    ModuleListPageSupport moduleListPage{};
 
     float calcInstrumentVolumeDecybelValue(uint8_t val);
     float calcInstrumentSendsDecybelValue(uint8_t val);

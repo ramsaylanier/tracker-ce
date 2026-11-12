@@ -1,3 +1,4 @@
+#include "SampleInstrumentFxQuery.h"
 #include "ampLogarythmicValues.h"
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
@@ -23,7 +24,7 @@ AUDIO_CORE_RAM void playerEngine::update()
        (trackControlParameter[(int)controlType::sequencerMode][envelopesControlValue[envAmp]]) ||
        (trackControlParameter[(int)controlType::sequencerMode2][envelopesControlValue[envAmp]]) ||
        (trackControlParameter[(int)controlType::performanceMode][envelopesControlValue[envAmp]]));
-    envelopeCondition[envCutoff] = (mtProject.instrument[currentInstrument_idx].filterEnable == 1);
+    envelopeCondition[envCutoff] = (SampleInstrumentFx::filterEnable(currentInstrument_idx) == 1);
     envelopeCondition[envPan] = true;
     envelopeCondition[envWtPos] =
       (mtProject.instrument[currentInstrument_idx].sample.type == mtSampleTypeWavetable) ||
@@ -390,7 +391,7 @@ inline void playerEngine::handleUpdateRefreshCutoff()
         }
         else
         {
-            localCutoff = mtProject.instrument[currentInstrument_idx].cutOff;
+            localCutoff = SampleInstrumentFx::cutOff(currentInstrument_idx);
         }
 
         if (localCutoff + currentEnvelopeModification[envCutoff] < 0.0f)
@@ -408,7 +409,7 @@ inline void playerEngine::handleUpdateRefreshResonance()
     if (refreshRegister & RESONANCE_MASK)
     {
         refreshRegister &= (~RESONANCE_MASK);
-        modResonance(mtProject.instrument[currentInstrument_idx].resonance);
+        modResonance(SampleInstrumentFx::resonance(currentInstrument_idx));
     }
 }
 void playerEngine::handleUpdateRefreshDelay()
@@ -426,7 +427,7 @@ void playerEngine::handleUpdateRefreshDelay()
         }
         else
         {
-            localDelaySend = mtProject.instrument[currentInstrument_idx].delaySend;
+            localDelaySend = SampleInstrumentFx::effectiveDelaySend(currentInstrument_idx);
         }
 
         if (trackControlParameter[(int)controlType::performanceMode][(int)parameterList::delaySend])
@@ -463,7 +464,7 @@ void playerEngine::handleUpdateRefreshReverb()
         }
         else
         {
-            localReverbSend = mtProject.instrument[currentInstrument_idx].reverbSend;
+            localReverbSend = SampleInstrumentFx::effectiveReverbSend(currentInstrument_idx);
         }
 
         if (trackControlParameter[(int)controlType::performanceMode]
@@ -505,7 +506,7 @@ inline void playerEngine::handleUpdateRefreshOverdrive()
         }
         else
         {
-            overdrive = mtProject.instrument[currentInstrument_idx].overdrive;
+            overdrive = SampleInstrumentFx::overdrive(currentInstrument_idx);
         }
 
         modOverdrive(overdrive);
@@ -532,7 +533,7 @@ inline void playerEngine::handleUpdateRefreshBitDepth()
         }
         else
         {
-            bitDepth = mtProject.instrument[currentInstrument_idx].bitDepth;
+            bitDepth = SampleInstrumentFx::bitDepth(currentInstrument_idx);
         }
 
         modBitDepth(bitDepth);
@@ -760,7 +761,7 @@ inline void playerEngine::handleUpdateRefreshCutoffLFO()
     {
         refreshRegister &= (~LFO_FILTER_SEND_MASK);
 
-        if (mtProject.instrument[currentInstrument_idx].filterEnable)
+        if (SampleInstrumentFx::filterEnable(currentInstrument_idx))
         {
             if ((mtProject.instrument[currentInstrument_idx].envelope[envCutoff].enable) &&
                 (!trackControlParameter[(int)controlType::sequencerMode]
