@@ -68,6 +68,8 @@ class audioEngine
     void refreshReverbVolume();
     void refreshDelayVolume();
     void refreshAllSends();
+    // Main-thread helper: mark sounding sample voices that currently play sampleInstrIdx.
+    void setRefreshBitForInstrument(uint8_t sampleInstrIdx, uint32_t mask);
     void forceLineInStreamVolume(uint8_t value);
     void refreshLineInStreamVolume();
     void refreshLineInStreamDelaySend();

@@ -20,8 +20,6 @@ const char* const kModuleNamesList[kMenuModulesCount] = { "Pattern",
 
 uint32_t instrumentParamOptions[2] = { 1, 2 };
 InterfaceMenuPopup::ModuleModes instrumentParamModes = { 2, instrumentParamOptions, { 2, 0 } };
-uint32_t masterOptions[3] = { (1 << 8), (2 << 8), (3 << 8) };
-InterfaceMenuPopup::ModuleModes masterModes = { 3, masterOptions, { 3, 0 } };
 uint32_t performOptions[2] = { 1, 2 };
 InterfaceMenuPopup::ModuleModes performModes = { 2, performOptions, { 2, 0 } };
 
@@ -66,8 +64,9 @@ const InterfaceMenuPopup::ModuleRef InterfaceMenuPopup::modules[kMenuModulesCoun
     { mtInterface.modules[2], interfaceButtonPattern, 0, nullptr },
     { mtInterface.modules[5], interfaceButtonParams, 0, &instrumentParamModes },
     { mtInterface.modules[3], interfaceButtonSamplePlay, 0, nullptr },
-    { mtInterface.modules[12], interfaceButtonMaster, 0, &masterModes },
-    // Song modes come from cSongEditor::menuModeCount (playlist + SongModePage modules).
+    // Master modes come from cMasterParams::menuModeCount (builtin + Master module pages).
+    { mtInterface.modules[12], interfaceButtonMaster, 0, nullptr },
+    // Song modes come from cSongEditor::menuModeCount (playlist + Song module pages).
     { mtInterface.modules[4], interfaceButtonSong, 0, nullptr },
     { mtInterface.modules[1], interfaceButtonSampleLoad, 0, nullptr },
     { mtInterface.modules[0], interfaceButtonFile, 0, nullptr },

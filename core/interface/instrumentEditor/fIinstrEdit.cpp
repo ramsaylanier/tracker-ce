@@ -1,5 +1,6 @@
 #include "instrumentEditor/instrumentEditor.h"
 #include "mtWavetableEnvelopes.h"
+#include "sdk/Registrar.h"
 
 #include "core/interfaceMenuPopup.h"
 #include "core/interfacePopups.h"
@@ -59,6 +60,19 @@ static void functEffectSelectOverdrive();
 static void functEffectSelectBitDepth();
 static void functOpenInstrumentSynthesizer();
 static void functEffectBack();
+static void functEffectModuleSoftKey(uint8_t button, uint8_t state);
+
+static void functModulePageButton(uint8_t button, uint8_t state);
+static void functModulePageBack();
+static void functModulePageUp();
+static void functModulePageDown();
+static void functModulePageLeft();
+static void functModulePageRight();
+static void functModulePageDelete();
+static void dispatchModulePageInput(InputKind kind,
+                                    uint8_t index = 0,
+                                    int8_t delta = 0,
+                                    SoftKeyButtonState state = SoftKeyButtonState::Press);
 
 void changeParamsVelocity(int16_t value);
 void changeParamsOffset(int16_t value);
@@ -80,6 +94,15 @@ void cInstrumentEditor::update()
 void cInstrumentEditor::start(uint32_t options)
 {
     moduleRefresh = 1;
+
+    if (activeModulePage != nullptr)
+    {
+        activeModulePage->onHide(getInstrumentPageHost());
+        hideModulePageScreen();
+        activeModulePage = nullptr;
+    }
+
+    bindInstrumentPageHost();
 
     if (mtProject.values.lastUsedInstrument >= SYNTH_INSTRUMENTS_START_IDX + kSynthParts)
     {
@@ -271,6 +294,13 @@ void cInstrumentEditor::start(uint32_t options)
 
 void cInstrumentEditor::stop()
 {
+    if (activeModulePage != nullptr)
+    {
+        activeModulePage->onHide(getInstrumentPageHost());
+        hideModulePageScreen();
+        activeModulePage = nullptr;
+    }
+
     mtPopups.hideInfoPopup();
     keyboardManager.deactivateKeyboard();
     sequencer.stopManualNotes();
@@ -406,16 +436,125 @@ void cInstrumentEditor::switchToEffectScreen()
     setEffectScreenFunct();
     showEffectScreen();
 }
+
 void cInstrumentEditor::setEffectScreenFunct()
 {
+    bindInstrumentPageHost();
+
     ip->clearButtonsRange(interfaceButton0, interfaceButton7);
     ip->setButtonObj(interfaceButton0, buttonPress, functEffectSelectOverdrive);
     ip->setButtonObj(interfaceButton1, buttonPress, functEffectSelectBitDepth);
     ip->setButtonObj(interfaceButton2, buttonPress, functEffectSelectReverb);
     ip->setButtonObj(interfaceButton3, buttonPress, functEffectSelectDelay);
     ip->setButtonObj(interfaceButton4, buttonPress, functOpenInstrumentSynthesizer);
-
+    ip->setButtonObj(interfaceButton5, functEffectModuleSoftKey);
+    ip->setButtonObj(interfaceButton6, functEffectModuleSoftKey);
     ip->setButtonObj(interfaceButton7, buttonPress, functEffectBack);
+
+    ip->setPotObj(interfacePot0, functEncoder);
+    ip->setButtonObj(interfaceButtonLeft, buttonPress, functLeft);
+    ip->setButtonObj(interfaceButtonRight, buttonPress, functRight);
+    ip->setButtonObj(interfaceButtonUp, buttonPress, functUp);
+    ip->setButtonObj(interfaceButtonDown, buttonPress, functDown);
+    ip->setButtonObj(interfaceButtonDelete, functDelete);
+    ip->clearButton(interfaceButtonInsert);
+    ip->setButtonObj(interfaceButtonMiniMenu, functMenu);
+}
+
+void cInstrumentEditor::bindInstrumentPageHost()
+{
+    ScreenChrome chrome{};
+    chrome.softLabels = label;
+    chrome.setTitle = [](const char* title) { instrumentEditor.setModulePageTitle(title); };
+    chrome.setListCount = [](uint8_t count) { instrumentEditor.setModulePageListCount(count); };
+    chrome.setListRow = [](uint8_t index, const char* name, const char* value)
+    { instrumentEditor.setModulePageListRow(index, name, value); };
+    chrome.setListFocus = [](uint8_t index, bool editingValue)
+    { instrumentEditor.setModulePageListFocus(index, editingValue); };
+    chrome.refresh = []() { instrumentEditor.refreshModulePage(); };
+    chrome.onClose = []() { instrumentEditor.hideModulePage(); };
+    chrome.isShiftPressed = []()
+    {
+        return instrumentEditor.buttons != nullptr &&
+               instrumentEditor.buttons->isButtonPressed(interfaceButtonShift);
+    };
+    getInstrumentPageHost().bind(chrome);
+}
+
+void cInstrumentEditor::showModulePage(ModulePage* page)
+{
+    if (page == nullptr)
+    {
+        return;
+    }
+
+    bindInstrumentPageHost();
+    PageHost& host = getInstrumentPageHost();
+    if (!page->canOpen(host))
+    {
+        return;
+    }
+
+    if (activeModulePage != nullptr && activeModulePage != page)
+    {
+        activeModulePage->onHide(host);
+        hideModulePageScreen();
+    }
+
+    activeModulePage = page;
+    showModulePageScreen();
+    bindModulePageButtons();
+    page->onShow(host);
+}
+
+void cInstrumentEditor::hideModulePage()
+{
+    if (activeModulePage == nullptr)
+    {
+        return;
+    }
+
+    activeModulePage->onHide(getInstrumentPageHost());
+    hideModulePageScreen();
+    activeModulePage = nullptr;
+    isEffectsWindow = true;
+    setEffectScreenFunct();
+    showEffectScreen();
+}
+
+void cInstrumentEditor::bindModulePageButtons()
+{
+    ip->clearButtonsRange(interfaceButton0, interfaceButton7);
+    ip->setButtonObj(interfaceButton0, functModulePageButton);
+    ip->setButtonObj(interfaceButton1, functModulePageButton);
+    ip->setButtonObj(interfaceButton2, functModulePageButton);
+    ip->setButtonObj(interfaceButton3, functModulePageButton);
+    ip->setButtonObj(interfaceButton4, functModulePageButton);
+    ip->setButtonObj(interfaceButton5, functModulePageButton);
+    ip->setButtonObj(interfaceButton6, functModulePageButton);
+    ip->setButtonObj(interfaceButton7, functModulePageButton);
+    ip->setPotObj(interfacePot0, functEncoder);
+    ip->setButtonObj(interfaceButtonUp, buttonPress, functModulePageUp);
+    ip->setButtonObj(interfaceButtonDown, buttonPress, functModulePageDown);
+    ip->setButtonObj(interfaceButtonLeft, buttonPress, functModulePageLeft);
+    ip->setButtonObj(interfaceButtonRight, buttonPress, functModulePageRight);
+    ip->setButtonObj(interfaceButtonDelete, buttonPress, functModulePageDelete);
+    ip->setButtonObj(interfaceButtonInsert, buttonPress, functModulePageBack);
+    ip->setButtonObj(interfaceButtonMiniMenu, functMenu);
+}
+
+void cInstrumentEditor::handleModulePageEncoder(int8_t delta)
+{
+    if (activeModulePage == nullptr || delta == 0)
+    {
+        return;
+    }
+
+    InputEvent event;
+    event.kind = InputKind::Encoder;
+    event.delta = delta;
+    event.shift = buttons != nullptr && buttons->isButtonPressed(interfaceButtonShift);
+    activeModulePage->onInput(getInstrumentPageHost(), event);
 }
 
 void cInstrumentEditor::changeParamValue(int value, ValueChangeSource source)
@@ -801,16 +940,41 @@ static void functSwitchToSends(uint8_t button, uint8_t state)
 //==============================================================================================================
 static void functEncoder(int16_t value)
 {
+    if (IE->activeModulePage != nullptr)
+    {
+        int8_t step = 0;
+        if (value > 127)
+            step = 127;
+        else if (value < -128)
+            step = -128;
+        else
+            step = static_cast<int8_t>(value);
+        IE->handleModulePageEncoder(step);
+        return;
+    }
+
     IE->changeParamValue(value, IE->kEncoder);
 }
 
 static void functUp()
 {
+    if (IE->activeModulePage != nullptr)
+    {
+        dispatchModulePageInput(InputKind::Navigate, 0, -1);
+        return;
+    }
+
     IE->changeParamValue(1);
 }
 
 static void functDown()
 {
+    if (IE->activeModulePage != nullptr)
+    {
+        dispatchModulePageInput(InputKind::Navigate, 0, 1);
+        return;
+    }
+
     IE->changeParamValue(-1);
 }
 
@@ -822,10 +986,14 @@ static void functLeft()
         return;
     }
 
-    if ((IE->isEffectsWindow) && (IE->mode == mtInstEditModeParams))
+    if (IE->isEffectsWindow && (IE->mode == mtInstEditModeParams))
     {
         if (IE->selectedPlaceSends > 0)
             IE->selectedPlaceSends--;
+        if (IE->isEffectsWindow && IE->selectedPlaceSends == 4)
+            IE->selectedPlaceSends = 3;
+        if (IE->isEffectsWindow && IE->selectedPlaceSends >= 5)
+            IE->selectedPlaceSends = 3;
         IE->showSendScreenFrame();
         return;
     }
@@ -854,11 +1022,14 @@ static void functRight()
         return;
     }
 
-    if ((IE->isEffectsWindow) && (IE->mode == mtInstEditModeParams))
+    if (IE->isEffectsWindow && (IE->mode == mtInstEditModeParams))
     {
         if (IE->selectedPlaceSends < IE->frameData.placesCount - 1)
             IE->selectedPlaceSends++;
-
+        if (IE->isEffectsWindow && IE->selectedPlaceSends == 4)
+            IE->selectedPlaceSends = 3;
+        if (IE->isEffectsWindow && IE->selectedPlaceSends >= 5)
+            IE->selectedPlaceSends = 3;
         IE->showSendScreenFrame();
         return;
     }
@@ -3136,6 +3307,93 @@ static void functEffectBack()
     IE->showInstrumentParams();
 }
 
+static void functEffectModuleSoftKey(uint8_t button, uint8_t state)
+{
+    SoftKeyHandler* handler = extensionCatalog().softKeyAt(
+      ScreenId::Instrument, BuiltinPage::Instrument::Effects, button);
+    if (handler == nullptr)
+    {
+        return;
+    }
+
+    SoftKeyButtonState skState = static_cast<SoftKeyButtonState>(state);
+    const bool handled =
+      handler->onPress(getInstrumentPageHost(), skState, IE->buttons != nullptr &&
+                                                           IE->buttons->isButtonPressed(
+                                                             interfaceButtonShift));
+
+    if (handled)
+    {
+        instrumentExtensions().applySoftKeys(BuiltinPage::Instrument::Effects);
+        getInstrumentPageHost().finishSoftKeys();
+    }
+
+    if (handled && state == buttonPress)
+    {
+        ModulePage* page = handler->pageToOpen();
+        if (page != nullptr)
+        {
+            IE->showModulePage(page);
+        }
+    }
+}
+
+static void dispatchModulePageInput(InputKind kind,
+                                    uint8_t index,
+                                    int8_t delta,
+                                    SoftKeyButtonState state)
+{
+    ModulePage* page = IE->activeModulePage;
+    if (page == nullptr)
+    {
+        return;
+    }
+
+    InputEvent event;
+    event.kind = kind;
+    event.index = index;
+    event.state = state;
+    event.delta = delta;
+    event.shift = IE->buttons != nullptr && IE->buttons->isButtonPressed(interfaceButtonShift);
+    page->onInput(getInstrumentPageHost(), event);
+}
+
+static void functModulePageButton(uint8_t button, uint8_t state)
+{
+    dispatchModulePageInput(InputKind::SoftKey, button, 0, static_cast<SoftKeyButtonState>(state));
+}
+
+static void functModulePageBack()
+{
+    dispatchModulePageInput(InputKind::Back);
+    IE->hideModulePage();
+}
+
+static void functModulePageUp()
+{
+    dispatchModulePageInput(InputKind::Navigate, 0, -1);
+}
+
+static void functModulePageDown()
+{
+    dispatchModulePageInput(InputKind::Navigate, 0, 1);
+}
+
+static void functModulePageLeft()
+{
+    dispatchModulePageInput(InputKind::HNavigate, 0, -1);
+}
+
+static void functModulePageRight()
+{
+    dispatchModulePageInput(InputKind::HNavigate, 0, 1);
+}
+
+static void functModulePageDelete()
+{
+    dispatchModulePageInput(InputKind::Clear);
+}
+
 void cInstrumentEditor::setDefaultVolume()
 {
     IE->editorInstrument->volume = defaultInstrumentParams.volume;
@@ -3569,3 +3827,4 @@ void cInstrumentEditor::setPlayButtonAction()
 {
     ip->setButtonObj(interfaceButtonPlay, buttonPress, functPlayAction);
 }
+

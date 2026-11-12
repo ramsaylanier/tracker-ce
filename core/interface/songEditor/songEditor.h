@@ -1,8 +1,11 @@
 #ifndef INTERFACE_SONGEDITOR_H_
 #define INTERFACE_SONGEDITOR_H_
 
+#include "core/moduleListPageSupport.h"
+#include "core/modulePageHost.h"
 #include "core/modulesBase.h"
-#include "ScreenHost.h"
+#include "sdk/Columns.h"
+#include "sdk/ModulePage.h"
 
 #include "mtStructs.h"
 
@@ -43,7 +46,7 @@ class cSongEditor : public ModuleBase
     virtual void initDisplayControls();
     virtual void destroyDisplayControls() {}
     virtual uint8_t getCurrentModeIdx() override { return songViewPage; }
-    // Playlist + feature-module SongModePage entries (Mini menu dots).
+    // Playlist + feature-module Song pages (Mini menu dots).
     virtual uint8_t menuModeCount() override;
     virtual uint32_t menuModeOption(uint8_t index) override;
 
@@ -67,19 +70,11 @@ class cSongEditor : public ModuleBase
     hControl label[8] = { -1 };
     hControl barControl = -1;
     hControl songPlayerControl = -1;
-    hControl modePageListControl = -1;
 
     hControl frameControl = -1;
     hControl bgLabel;
 
-    static constexpr uint8_t kModePageListRows = 8;
-    static constexpr uint8_t kModePageListNameLen = 24;
-    static constexpr uint8_t kModePageListValueLen = 12;
-    strParamValueList modePageList{};
-    char modePageParamNames[kModePageListRows][kModePageListNameLen]{};
-    char modePageParamValues[kModePageListRows][kModePageListValueLen]{};
-    char* modePageParamNamePtrs[kModePageListRows]{};
-    char* modePageParamValuePtrs[kModePageListRows]{};
+    ModuleListPageSupport moduleListPage{};
 
     uint8_t lastSelectedPlace = 1;
     uint8_t selectedPlace = 0;
@@ -102,25 +97,26 @@ class cSongEditor : public ModuleBase
     void refreshListColumnButtonLabels();
     void wireListColumnDrawData();
 
-    bool isModePageOpen() const { return activeModePage != nullptr; }
-    SongModePage* getActiveModePage() const { return activeModePage; }
-    void showModePage(SongModePage* page);
-    void hideModePage();
-    void showModePageScreen();
-    void hideModePageScreen();
-    void setModePageTitle(const char* title);
-    void setModePageLine(uint8_t row, const char* text);
-    void setModePageScreenLabel(uint8_t index,
-                                const char* text,
-                                uint8_t state,
-                                const char* text2);
-    void finishModePageLabels();
-    void setModePageListCount(uint8_t count);
-    void setModePageListRow(uint8_t index, const char* name, const char* value);
-    void setModePageListFocus(uint8_t index, bool editingValue);
-    void refreshModePage();
-    void bindModePageButtons();
-    void handleModePageEncoder(int8_t delta);
+    bool isModulePageOpen() const { return activeModulePage != nullptr; }
+    ModulePage* getActiveModulePage() const { return activeModulePage; }
+    void showModulePage(ModulePage* page);
+    void hideModulePage();
+    void showModulePageScreen();
+    void hideModulePageScreen();
+    void setModulePageTitle(const char* title);
+    void setModulePageListCount(uint8_t count) { moduleListPage.setListCount(count); }
+    void setModulePageListRow(uint8_t index, const char* name, const char* value)
+    {
+        moduleListPage.setListRow(index, name, value);
+    }
+    void setModulePageListFocus(uint8_t index, bool editingValue)
+    {
+        moduleListPage.setListFocus(index, editingValue);
+    }
+    void refreshModulePage() { moduleListPage.refresh(); }
+    void bindModulePageButtons();
+    void handleModulePageEncoder(int8_t delta);
+    void bindSongPageHost();
 
     //--------------------------------------------------------------
 
@@ -197,8 +193,8 @@ class cSongEditor : public ModuleBase
     int16_t lastSongListPos = -1;
     void lightUpPadBoard();
 
-    SongModePage* activeModePage = nullptr;
-    // 0 = playlist; 1+ = feature SongModePage menu index.
+    ModulePage* activeModulePage = nullptr;
+    // 0 = playlist; 1+ = feature Song page menu index.
     uint8_t songViewPage = 0;
 
   private:

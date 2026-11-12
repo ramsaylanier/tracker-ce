@@ -2,6 +2,8 @@
 #ifndef INTERFACE_PATTERNEDITOR_H_
 #define INTERFACE_PATTERNEDITOR_H_
 
+#include "core/moduleListPageSupport.h"
+#include "core/modulePageHost.h"
 #include "core/modulesBase.h"
 
 #include "mtKeyboardManager.h"
@@ -30,6 +32,9 @@ class cPatternEditor : public ModuleBase
     virtual void destroyDisplayControls() {}
 
     virtual void hideControlsUnderMiniMenu();
+    virtual uint8_t getCurrentModeIdx() override;
+    virtual uint8_t menuModeCount() override;
+    virtual uint32_t menuModeOption(uint8_t index) override;
 
     void refreshLastUsedInstrument();
 
@@ -198,7 +203,8 @@ class cPatternEditor : public ModuleBase
         EditNote = 0,
         EditInstr,
         EditFx1,
-        EditFx2
+        EditFx2,
+        EditExt // optional PatternColumn (selectedParam == 4)
     };
 
     enum PatternArrangement
@@ -372,6 +378,33 @@ class cPatternEditor : public ModuleBase
     uint8_t lastTitleBarFx = 0xFF;
     uint8_t lastTitleBarParam = 0xFF;
     char rightTitleBarLabel[40];
+
+    //--------------------------------------------------------
+    // Module SDK v2 — Pattern pages + PatternColumn
+    ModulePage* activeModulePage = nullptr;
+    bool isModulePageOpen() const { return activeModulePage != nullptr; }
+    void bindPatternPageHost();
+    void showModulePage(ModulePage* page);
+    void hideModulePage();
+    void showModulePageScreen();
+    void hideModulePageScreen();
+    void bindModulePageButtons();
+    void handleModulePageEncoder(int8_t delta);
+    void setModulePageTitle(const char* title);
+    void setModulePageListCount(uint8_t count) { moduleListPage.setListCount(count); }
+    void setModulePageListRow(uint8_t index, const char* name, const char* value)
+    {
+        moduleListPage.setListRow(index, name, value);
+    }
+    void setModulePageListFocus(uint8_t index, bool editingValue)
+    {
+        moduleListPage.setListFocus(index, editingValue);
+    }
+    void refreshModulePage() { moduleListPage.refresh(); }
+    void wirePatternMainSoftKeyOverrides();
+
+    ModuleListPageSupport moduleListPage{};
+
 };
 
 extern cPatternEditor patternEditor;

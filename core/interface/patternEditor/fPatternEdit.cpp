@@ -13,13 +13,18 @@
 #include "core/interfaceDefs.h"
 #include "core/interfaceMenuPopup.h"
 #include "core/interfacePopups.h"
+#include "core/modulePageHost.h"
 #include "core/songTimer.h"
 
 #include "Platform.h"
 #include "TrackerImpl.h"
 #include "log.h"
+#include "sdk/Columns.h"
+#include "sdk/Ids.h"
+#include "sdk/Registrar.h"
 
 #include <cr_section_macros.h>
+#include <string.h>
 
 strTrackerPattern cPatternEditor::trackerPattern;
 cPatternEditor::strFill cPatternEditor::fillData[6];
@@ -122,6 +127,111 @@ static void functMenu(uint8_t state);
 // muty
 static void functMuteTrack(uint8_t button, uint8_t state);
 static void functRecArmTrack(uint8_t button, uint8_t state);
+
+static void functPatternMainSoftKey(uint8_t button, uint8_t state);
+static void functModulePageButton(uint8_t button, uint8_t state);
+static void functModulePageBack();
+static void functModulePageUp();
+static void functModulePageDown();
+static void functModulePageLeft();
+static void functModulePageRight();
+static void functModulePageDelete();
+static void functModulePageEncoder(int16_t value);
+static void dispatchModulePageInput(InputKind kind,
+                                    uint8_t index = 0,
+                                    int8_t delta = 0,
+                                    SoftKeyButtonState state = SoftKeyButtonState::Press);
+
+// Only the first registered PatternColumn is shown, edited and played back.
+static PatternColumn* getActivePatternColumn()
+{
+    return extensionCatalog().patternColumnAt(0);
+}
+
+static void notifyPatternColumnInserted(uint16_t step, bool duplicate)
+{
+    PatternColumn* column = getActivePatternColumn();
+    if (column == nullptr)
+    {
+        return;
+    }
+
+    const int8_t startTrack = PTE->trackerPattern.selectState == 2
+                                ? PTE->trackerPattern.selectStartTrack
+                                : PTE->trackerPattern.actualTrack;
+    const int8_t endTrack = PTE->trackerPattern.selectState == 2
+                              ? PTE->trackerPattern.selectEndTrack
+                              : PTE->trackerPattern.actualTrack;
+    const int8_t t0 = startTrack <= endTrack ? startTrack : endTrack;
+    const int8_t t1 = startTrack <= endTrack ? endTrack : startTrack;
+    for (int8_t t = t0; t <= t1; t++)
+    {
+        column->onInserted(static_cast<uint8_t>(t), step, duplicate);
+    }
+}
+
+static void notifyPatternColumnRemoved(uint16_t step)
+{
+    PatternColumn* column = getActivePatternColumn();
+    if (column == nullptr)
+    {
+        return;
+    }
+
+    const int8_t startTrack = PTE->trackerPattern.selectState == 2
+                                ? PTE->trackerPattern.selectStartTrack
+                                : PTE->trackerPattern.actualTrack;
+    const int8_t endTrack = PTE->trackerPattern.selectState == 2
+                              ? PTE->trackerPattern.selectEndTrack
+                              : PTE->trackerPattern.actualTrack;
+    const int8_t t0 = startTrack <= endTrack ? startTrack : endTrack;
+    const int8_t t1 = startTrack <= endTrack ? endTrack : startTrack;
+    for (int8_t t = t0; t <= t1; t++)
+    {
+        column->onRemoved(static_cast<uint8_t>(t), step);
+    }
+}
+
+static void clearPatternColumnSelection()
+{
+    PatternColumn* column = getActivePatternColumn();
+    if (column == nullptr)
+    {
+        return;
+    }
+
+    int8_t startTrack = PTE->trackerPattern.actualTrack;
+    int8_t endTrack = PTE->trackerPattern.actualTrack;
+    int16_t startStep = PTE->trackerPattern.actualStep;
+    int16_t endStep = PTE->trackerPattern.actualStep;
+    if (PTE->trackerPattern.selectState == 2)
+    {
+        startTrack = PTE->trackerPattern.selectStartTrack;
+        endTrack = PTE->trackerPattern.selectEndTrack;
+        startStep = PTE->trackerPattern.selectStartStep;
+        endStep = PTE->trackerPattern.selectEndStep;
+    }
+    if (startTrack > endTrack)
+    {
+        const int8_t tmp = startTrack;
+        startTrack = endTrack;
+        endTrack = tmp;
+    }
+    if (startStep > endStep)
+    {
+        const int16_t tmp = startStep;
+        startStep = endStep;
+        endStep = tmp;
+    }
+
+    for (int8_t t = startTrack; t <= endTrack; t++)
+    {
+        for (int16_t s = startStep; s <= endStep; s++)
+        {
+            column->onClear(static_cast<uint8_t>(t), static_cast<uint16_t>(s));
+        }
+    }
+}
 
 //--------------------------------------------
 static uint8_t getSelectedElement();
@@ -304,10 +414,35 @@ void cPatternEditor::update()
     lastPatternPosition = trackerPattern.playheadPosition;
 }
 
+uint8_t cPatternEditor::menuModeCount()
+{
+    // No Pattern module pages => no Mini dots (same as stock Pattern).
+    return patternExtensions().menuModeCount(1);
+}
+
+uint32_t cPatternEditor::menuModeOption(uint8_t index)
+{
+    return patternExtensions().menuModeOption(1, index);
+}
+
+uint8_t cPatternEditor::getCurrentModeIdx()
+{
+    if (isModulePageOpen())
+    {
+        for (uint8_t i = 0; i < patternExtensions().modulePageCount(); i++)
+        {
+            if (patternExtensions().modulePageAt(i) == activeModulePage)
+            {
+                return static_cast<uint8_t>(1 + i);
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
 void cPatternEditor::start(uint32_t options)
 {
-    (void)options;
-
     moduleRefresh = 1;
     patternButtonReleaseActive = 0;
 
@@ -339,21 +474,59 @@ void cPatternEditor::start(uint32_t options)
             break;
     }
 
+    ModulePage* pendingPage = nullptr;
+    bindPatternPageHost();
+    if (options == 0)
+    {
+        // keep activeModulePage on Mini dismiss
+    }
+    else if (options == 1)
+    {
+        if (activeModulePage != nullptr)
+        {
+            hideModulePage();
+        }
+    }
+    else
+    {
+        pendingPage = patternExtensions().pageForMenuOption(options);
+    }
+
     readPatternState();
     refreshPattern();
 
     setSwitchModuleFunct();
 
-    showDefaultScreen();
-    setDefaultScreenFunct();
+    if (pendingPage != nullptr)
+    {
+        showModulePage(pendingPage);
+    }
+    else if (activeModulePage != nullptr)
+    {
+        bindModulePageButtons();
+        activeModulePage->onShow(getPatternPageHost());
+    }
+    else
+    {
+        showDefaultScreen();
+        setDefaultScreenFunct();
+    }
 
     refreshEditState();
 
-    focusOnPattern();
+    if (!isModulePageOpen())
+    {
+        focusOnPattern();
+    }
 }
 
 void cPatternEditor::stop()
 {
+    if (activeModulePage != nullptr)
+    {
+        hideModulePage();
+    }
+
     if (mtPopups.isNoteKeyboardPopupActive())
     {
         mtPopups.toggleNoteKeyboardPopup();
@@ -406,6 +579,7 @@ void cPatternEditor::hideControlsUnderMiniMenu()
             trackerPattern.track[trackStart].row[row].instr[0] = 0;
             trackerPattern.track[trackStart].row[row].fx[0][0] = 0;
             trackerPattern.track[trackStart].row[row].fx[1][0] = 0;
+            trackerPattern.track[trackStart].row[row].ext[0] = 0;
         }
     }
     display.refreshControl(patternControl);
@@ -498,6 +672,20 @@ void cPatternEditor::refreshPattern()
 {
     seq = sequencer.getPatternToUI();
     trackerPattern.patternLength = seq->track[0].length + 1;
+
+    if (extensionCatalog().patternColumnCount() == 0)
+    {
+        trackerPattern.showExtColumn = 0;
+        if (editParam == EditExt)
+        {
+            editParam = EditFx2;
+        }
+    }
+    else
+    {
+        trackerPattern.showExtColumn = 1;
+    }
+
     trackerPattern.selectedParam = editParam;
 
     //----------------------------------------------------------------------------
@@ -674,6 +862,11 @@ void cPatternEditor::refreshPattern()
                 row.fx[1][2] = 0;
                 row.fx[1][3] = 0;
                 row.fx[1][4] = 0;
+                row.ext[0] = 0;
+                row.ext[1] = 0;
+                row.ext[2] = 0;
+                row.ext[3] = 0;
+                row.ext[4] = 0;
                 continue;
             }
 
@@ -844,6 +1037,19 @@ void cPatternEditor::refreshPattern()
                     row.fx[1][2] = '-';
                     row.fx[1][3] = '-';
                 }
+            }
+
+            if (PatternColumn* column = getActivePatternColumn())
+            {
+                row.ext[0] = 0;
+                column->formatCell(trackIdx,
+                                   static_cast<uint16_t>(seqStepIdx),
+                                   row.ext,
+                                   sizeof(row.ext));
+            }
+            else
+            {
+                row.ext[0] = 0;
             }
         }
     }
@@ -2061,7 +2267,15 @@ void functEncoder(int16_t value)
     }
 
     // czy parametr widoczny jesli np. pokazywane tylko 2 parametry 8 trackow
-    if (PTE->patternViewMode > 0 && !(PTE->patternViewMode & (1 << PTE->editParam)))
+    // EditExt (param 4) is only available in the full 4-track view.
+    if (PTE->editParam == cPatternEditor::EditExt)
+    {
+        if (PTE->patternViewMode > 0 || getActivePatternColumn() == nullptr)
+        {
+            return;
+        }
+    }
+    else if (PTE->patternViewMode > 0 && !(PTE->patternViewMode & (1 << PTE->editParam)))
     {
         return;
     }
@@ -2793,6 +3007,20 @@ static void functFx2(uint8_t state)
     {
         PTE->setStepButtonState(3, 1);
         //		PTE->wasNotesEditBefore = 0;
+        // Second press while already on FX2 (with a PatternColumn) focuses the ext column.
+        if (PTE->editParam == cPatternEditor::EditFx2 && getActivePatternColumn() != nullptr &&
+            PTE->fillState == 0)
+        {
+            PTE->previousEditParam = PTE->editParam;
+            PTE->editParam = cPatternEditor::EditExt;
+            PTE->trackerPattern.selectedParam = 4;
+            display.refreshControl(PTE->patternControl);
+            PTE->showActualParamOnBar();
+            PTE->cancelPopups();
+            PTE->focusOnPattern();
+            return;
+        }
+
         PTE->previousEditParam = PTE->editParam;
         PTE->editParam = cPatternEditor::EditFx2;
         PTE->trackerPattern.selectedParam = 3;
@@ -3023,7 +3251,9 @@ static void functInsertHome(uint8_t state)
                 newFileManager.storePatternUndoRevision();
 
                 sendSelection();
+                const uint16_t insertStep = static_cast<uint16_t>(PTE->trackerPattern.actualStep);
                 sequencer.insert(&sequencer.selection);
+                notifyPatternColumnInserted(insertStep, false);
 
                 newFileManager.setActualPatternStructChanged();
             }
@@ -3121,9 +3351,12 @@ static void functDeleteBackspace(uint8_t state)
                 if (state == buttonPress)
                 {
                     sendSelection();
+                    const uint16_t removedStep =
+                      static_cast<uint16_t>(PTE->trackerPattern.actualStep);
                     bool backspaceExecuted = sequencer.backspace();
                     if (backspaceExecuted)
                     {
+                        notifyPatternColumnRemoved(removedStep);
                         if (isMultiSelection())
                         {
                             if (PTE->trackerPattern.selectStartStep > 0)
@@ -3158,7 +3391,11 @@ static void functDeleteBackspace(uint8_t state)
                 //				}
 
                 sendSelection();
-                if (PTE->editParam == cPatternEditor::EditFx2)
+                if (PTE->editParam == cPatternEditor::EditExt)
+                {
+                    clearPatternColumnSelection();
+                }
+                else if (PTE->editParam == cPatternEditor::EditFx2)
                 {
                     sequencer.clearSelected(PTE->isMicVolView ? Sequencer::ELEMENTS_VOLUME
                                                               : Sequencer::ELEMENTS_FX1);
@@ -3197,6 +3434,49 @@ void changeSelectedStepValue(int16_t value)
             break;
 
         case cPatternEditor::EditInstr: sequencer.changeSelectionInstrument(value); break;
+
+        case cPatternEditor::EditExt:
+        {
+            PatternColumn* column = getActivePatternColumn();
+            if (column == nullptr)
+            {
+                break;
+            }
+
+            int8_t startTrack = PTE->trackerPattern.actualTrack;
+            int8_t endTrack = PTE->trackerPattern.actualTrack;
+            int16_t startStep = PTE->trackerPattern.actualStep;
+            int16_t endStep = PTE->trackerPattern.actualStep;
+            if (PTE->trackerPattern.selectState == 2)
+            {
+                startTrack = PTE->trackerPattern.selectStartTrack;
+                endTrack = PTE->trackerPattern.selectEndTrack;
+                startStep = PTE->trackerPattern.selectStartStep;
+                endStep = PTE->trackerPattern.selectEndStep;
+            }
+            if (startTrack > endTrack)
+            {
+                const int8_t tmp = startTrack;
+                startTrack = endTrack;
+                endTrack = tmp;
+            }
+            if (startStep > endStep)
+            {
+                const int16_t tmp = startStep;
+                startStep = endStep;
+                endStep = tmp;
+            }
+
+            const int8_t delta = static_cast<int8_t>(clamp<int>(value, -127, 127));
+            for (int8_t t = startTrack; t <= endTrack; t++)
+            {
+                for (int16_t s = startStep; s <= endStep; s++)
+                {
+                    column->onEdit(static_cast<uint8_t>(t), static_cast<uint16_t>(s), delta);
+                }
+            }
+            break;
+        }
 
         case cPatternEditor::EditFx1:
         case cPatternEditor::EditFx2:
@@ -5129,6 +5409,20 @@ void cPatternEditor::setActionButtonPage1Funct()
     }
 
     ip->setButtonObj(interfaceButton7, buttonPress, functNextActionButtonPage);
+    wirePatternMainSoftKeyOverrides();
+}
+
+void cPatternEditor::wirePatternMainSoftKeyOverrides()
+{
+    bindPatternPageHost();
+    for (uint8_t slot = 0; slot < 8; slot++)
+    {
+        if (extensionCatalog().softKeyAt(ScreenId::Pattern, BuiltinPage::Pattern::Main, slot) !=
+            nullptr)
+        {
+            ip->setButtonObj(interfaceButton0 + slot, functPatternMainSoftKey);
+        }
+    }
 }
 
 // druga strona akcji
@@ -5259,4 +5553,166 @@ static void functMenu(uint8_t state)
     {
         mtMenuPopup.hideModulePopup(PTE);
     }
+}
+
+void cPatternEditor::bindPatternPageHost()
+{
+    ScreenChrome chrome{};
+    chrome.softLabels = label;
+    chrome.setTitle = [](const char* title) { patternEditor.setModulePageTitle(title); };
+    chrome.setListCount = [](uint8_t count) { patternEditor.setModulePageListCount(count); };
+    chrome.setListRow = [](uint8_t index, const char* name, const char* value)
+    { patternEditor.setModulePageListRow(index, name, value); };
+    chrome.setListFocus = [](uint8_t index, bool editingValue)
+    { patternEditor.setModulePageListFocus(index, editingValue); };
+    chrome.refresh = []() { patternEditor.refreshModulePage(); };
+    chrome.onClose = []() { patternEditor.hideModulePage(); };
+    chrome.isShiftPressed = []()
+    {
+        return patternEditor.buttons != nullptr &&
+               patternEditor.buttons->isButtonPressed(interfaceButtonShift);
+    };
+    getPatternPageHost().bind(chrome);
+}
+
+void cPatternEditor::showModulePage(ModulePage* page)
+{
+    if (page == nullptr)
+    {
+        return;
+    }
+
+    bindPatternPageHost();
+    PageHost& host = getPatternPageHost();
+    if (!page->canOpen(host))
+    {
+        return;
+    }
+
+    if (activeModulePage != nullptr && activeModulePage != page)
+    {
+        activeModulePage->onHide(host);
+        hideModulePageScreen();
+    }
+
+    activeModulePage = page;
+    showModulePageScreen();
+    bindModulePageButtons();
+    page->onShow(host);
+}
+
+void cPatternEditor::hideModulePage()
+{
+    if (activeModulePage == nullptr)
+    {
+        return;
+    }
+
+    activeModulePage->onHide(getPatternPageHost());
+    hideModulePageScreen();
+    activeModulePage = nullptr;
+    setDefaultScreenFunct();
+    showDefaultScreen();
+    refreshActualActionButtonPage();
+    focusOnPattern();
+}
+
+void cPatternEditor::bindModulePageButtons()
+{
+    ip->clearButtonsRange(interfaceButton0, interfaceButton7);
+    ip->setButtonObj(interfaceButton0, functModulePageButton);
+    ip->setButtonObj(interfaceButton1, functModulePageButton);
+    ip->setButtonObj(interfaceButton2, functModulePageButton);
+    ip->setButtonObj(interfaceButton3, functModulePageButton);
+    ip->setButtonObj(interfaceButton4, functModulePageButton);
+    ip->setButtonObj(interfaceButton5, functModulePageButton);
+    ip->setButtonObj(interfaceButton6, functModulePageButton);
+    ip->setButtonObj(interfaceButton7, functModulePageButton);
+    ip->setPotObj(interfacePot0, functModulePageEncoder, false);
+    ip->setButtonObj(interfaceButtonUp, buttonPress, functModulePageUp);
+    ip->setButtonObj(interfaceButtonDown, buttonPress, functModulePageDown);
+    ip->setButtonObj(interfaceButtonLeft, buttonPress, functModulePageLeft);
+    ip->setButtonObj(interfaceButtonRight, buttonPress, functModulePageRight);
+    ip->setButtonObj(interfaceButtonDelete, buttonPress, functModulePageDelete);
+    ip->setButtonObj(interfaceButtonInsert, buttonPress, functModulePageBack);
+    ip->setButtonObj(interfaceButtonMiniMenu, functMenu);
+}
+
+void cPatternEditor::handleModulePageEncoder(int8_t delta)
+{
+    dispatchModulePageInput(InputKind::Encoder, 0, delta);
+}
+
+static void dispatchModulePageInput(InputKind kind,
+                                    uint8_t index,
+                                    int8_t delta,
+                                    SoftKeyButtonState state)
+{
+    ModulePage* page = PTE->activeModulePage;
+    if (page == nullptr)
+    {
+        return;
+    }
+
+    InputEvent event;
+    event.kind = kind;
+    event.index = index;
+    event.state = state;
+    event.delta = delta;
+    event.shift = PTE->buttons != nullptr && PTE->buttons->isButtonPressed(interfaceButtonShift);
+    page->onInput(getPatternPageHost(), event);
+}
+
+static void functPatternMainSoftKey(uint8_t button, uint8_t state)
+{
+    SoftKeyButtonState skState = static_cast<SoftKeyButtonState>(state);
+    if (patternExtensions().handleSoftKey(BuiltinPage::Pattern::Main, button, skState))
+    {
+        if (PTE->actualActionButtonsPage == 0 && !PTE->isModulePageOpen())
+        {
+            patternExtensions().applySoftKeys(BuiltinPage::Pattern::Main);
+            getPatternPageHost().finishSoftKeys();
+        }
+    }
+}
+
+static void functModulePageButton(uint8_t button, uint8_t state)
+{
+    dispatchModulePageInput(InputKind::SoftKey, button, 0, static_cast<SoftKeyButtonState>(state));
+}
+
+static void functModulePageBack()
+{
+    dispatchModulePageInput(InputKind::Back);
+    PTE->hideModulePage();
+}
+
+static void functModulePageUp()
+{
+    dispatchModulePageInput(InputKind::Navigate, 0, -1);
+}
+
+static void functModulePageDown()
+{
+    dispatchModulePageInput(InputKind::Navigate, 0, 1);
+}
+
+static void functModulePageLeft()
+{
+    dispatchModulePageInput(InputKind::HNavigate, 0, -1);
+}
+
+static void functModulePageRight()
+{
+    dispatchModulePageInput(InputKind::HNavigate, 0, 1);
+}
+
+static void functModulePageDelete()
+{
+    dispatchModulePageInput(InputKind::Clear);
+}
+
+static void functModulePageEncoder(int16_t value)
+{
+    PTE->handleModulePageEncoder(static_cast<int8_t>(clamp<int>(value, -127, 127)));
 }

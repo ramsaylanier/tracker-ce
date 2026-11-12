@@ -63,6 +63,9 @@ def discover_modules(modules_dir: Path) -> list[ModuleInfo]:
     for child in sorted(modules_dir.iterdir()):
         if not child.is_dir():
             continue
+        # Skip _example / _wip directories unless explicitly passed via --modules path.
+        if child.name.startswith("_"):
+            continue
         module_mk = child / "module.mk"
         if not module_mk.is_file():
             continue

@@ -95,6 +95,7 @@ class cHorizontalTracker : public cDisplayControl
     void instruments();
     void fxes1();
     void fxes2();
+    void extColumn();
 
     uint8_t displayMode;
 

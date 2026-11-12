@@ -1,10 +1,12 @@
 #include "ampLogarythmicValues.h"
+#include "core/modulePageHost.h"
 #include "mtMasterEnhancer.h"
 #ifdef FEATURE_SYNTH
 #include "Synth.h"
 #endif
 #include "util_math.h"
 #include <cmath>
+#include <cstdio>
 #include <masterParams/masterParams.h>
 
 static const uint16_t framesPlaces[8][4] = {
@@ -248,6 +250,86 @@ void cMasterParams::initDisplayControls()
     saturationListProperties.data = &saturationListData;
     saturationListProperties.colors = nullptr;
     saturationList = display.createControl<cList>(&saturationListProperties);
+
+    moduleListPage.createListControl();
+}
+
+void cMasterParams::showModulePageScreen()
+{
+    titleBar->show();
+
+    display.setControlHide(frameControl);
+    display.setControlHide(delayPingpongEnableList);
+    display.setControlHide(delaySyncEnableList);
+    display.setControlHide(delaySyncRateList);
+    display.setControlHide(limiterSidechainList);
+    display.setControlHide(saturationList);
+    display.setControlHide(blankSpaceCover[0]);
+    display.setControlHide(blankSpaceCover[1]);
+    display.setControlHide(blankSpaceCover[2]);
+
+    // Hide all mixer meter / volume chrome (track mixer + global mixer).
+    const uint8_t barCount =
+#ifdef FEATURE_SYNTH
+      static_cast<uint8_t>(8 + kSynthParts);
+#else
+      8;
+#endif
+    for (uint8_t i = 0; i < barCount; i++)
+    {
+        display.setControlHide(barControl[i]);
+        if (i < 8)
+        {
+            display.setControlHide(trackVolumeBar[i]);
+            display.setControlHide(trackNameLabel[i]);
+        }
+    }
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        display.setControlText(label[i], "");
+        display.setControlText2(label[i], (char*)"");
+        display.setControlStyle(label[i],
+                                controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
+        display.setControlStyle2(label[i],
+                                 controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
+        display.setControlValue(label[i], 1);
+        display.setControlColors(label[i], display.getTheme().inactiveLabelsColors);
+        display.setControlShow(label[i]);
+        display.refreshControl(label[i]);
+    }
+
+    display.setControlShow(bgLabel);
+    display.refreshControl(bgLabel);
+
+    moduleListPage.showList();
+
+    display.synchronizeRefresh();
+}
+
+void cMasterParams::hideModulePageScreen()
+{
+    moduleListPage.hideList();
+}
+
+void cMasterParams::setPagedTitle(const char* name, uint8_t pageNumber)
+{
+    // The title label keeps this pointer, so the text has to live in a member buffer.
+    const unsigned total = 3u + masterExtensions().modulePageCount();
+    snprintf(screenTitle,
+             sizeof(screenTitle),
+             "%s %u/%u",
+             name != nullptr ? name : "",
+             (unsigned)pageNumber,
+             total);
+    titleBar->setTitle(screenTitle);
+}
+
+void cMasterParams::setModulePageTitle(const char* title)
+{
+    titleBar->show();
+
+    setPagedTitle(title, static_cast<uint8_t>(currentPageSlot() + 1));
 }
 
 void cMasterParams::showMasterScreen()
@@ -257,6 +339,7 @@ void cMasterParams::showMasterScreen()
     display.setControlHide(delaySyncEnableList);
     display.setControlHide(delaySyncRateList);
     display.setControlHide(limiterSidechainList);
+    moduleListPage.hideList();
     display.setControlShow(saturationList);
 
     display.refreshControl(saturationList);
@@ -267,7 +350,7 @@ void cMasterParams::showMasterScreen()
     }
 
     titleBar->show();
-    titleBar->setTitle("Master 1/3");
+    setPagedTitle("Master", 1);
 
     display.setControlText(label[0], "Volume");
     display.setControlText(label[1], "Reverb");
@@ -1156,7 +1239,7 @@ void cMasterParams::resizeToSmallConfig(uint8_t labelIdx)
 
 void cMasterParams::showVolume()
 {
-    if (displayType != displayMode::masterValues)
+    if (displayType != displayMode::masterValues || isModulePageOpen())
     {
         return;
     }
@@ -1357,9 +1440,9 @@ void cMasterParams::showMixerScreen()
 
     titleBar->show();
 #ifdef FEATURE_SYNTH
-    titleBar->setTitle("Sample Track Mixer 2/3");
+    setPagedTitle("Sample Track Mixer", 2);
 #else
-    titleBar->setTitle("Track Mixer 2/3");
+    setPagedTitle("Track Mixer", 2);
 #endif
 
     if (isSolo)
@@ -1425,7 +1508,7 @@ void cMasterParams::showMixerDelayReverbScreen()
     display.setControlHide(saturationList);
 
     titleBar->show();
-    titleBar->setTitle("Global Mixer 3/3");
+    setPagedTitle("Global Mixer", 3);
 
     char* mixerLabelFormat = (char*)"%s";
 
@@ -2047,3 +2130,4 @@ void cMasterParams::hideControlUnderMenu()
         display.setControlHide(blankSpaceCover[2]);
     }
 }
+

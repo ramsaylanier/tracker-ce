@@ -1,8 +1,9 @@
 #ifndef INTERFACE_PERFORMANCEMODE_H_
 #define INTERFACE_PERFORMANCEMODE_H_
 
-#include "FeatureModule.h"
+#include "core/modulePageHost.h"
 #include "core/modulesBase.h"
+#include "sdk/ModulePage.h"
 
 #include "mtStructs.h"
 
@@ -112,15 +113,14 @@ class cPerformanceMode : public ModuleBase
     void showFxNames(uint8_t place);
     void hideFxNames();
 
-    void togglePerformancePage();
     // Cycle registered Performance pages: page0 -> page1 -> ... -> hide -> page0.
     // Returns true if a module page is now active.
     bool cyclePerformancePage();
-    void showPerformancePage(PerformancePage* page);
+    void showPerformancePage(ModulePage* page);
     void hidePerformancePage();
     bool isPerformancePageActive() const { return activePerformancePage != nullptr; }
-    PerformancePage* getActivePerformancePage() const { return activePerformancePage; }
-    uint8_t getActivePerformancePageIndex() const { return activePerformancePageIndex; }
+    ModulePage* getActivePerformancePage() const { return activePerformancePage; }
+    void bindPerformancePageHost();
     //----------------------------------
 
     void setFxValue(int value);
@@ -157,7 +157,7 @@ class cPerformanceMode : public ModuleBase
     uint8_t performanceEditState = 0;
     uint8_t performanceEditPlace = 0;
     uint8_t tracksPage = 0;
-    PerformancePage* activePerformancePage = nullptr;
+    ModulePage* activePerformancePage = nullptr;
     uint8_t activePerformancePageIndex = 0;
 
     uint8_t dontClearPerformanceMode = 0;

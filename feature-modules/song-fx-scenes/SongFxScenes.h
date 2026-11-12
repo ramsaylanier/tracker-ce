@@ -2,8 +2,6 @@
 #define SONG_FX_SCENES_H_
 
 #include "FeatureModule.h"
-#include "PerformanceHost.h"
-#include "ScreenHost.h"
 
 #include <stdint.h>
 
@@ -39,22 +37,21 @@ struct strSongFxScenesFile
     uint16_t version;
     uint16_t count;
     strSongFxScene scenes[kSongFxScenesCount];
-    uint8_t songSlotScene[SongListColumn::kSongSlotCount + 1];
+    uint8_t songSlotScene[SongColumn::kSongSlotCount + 1];
 };
 
 static_assert(sizeof(strSongFxScenesFile) % 4 == 0,
               "strSongFxScenesFile must be 4-byte aligned for FatFs DMA");
-static_assert(SongListColumn::kSongSlotCount == 255,
-              "SongListColumn::kSongSlotCount must match SONG_MAX");
+static_assert(SongColumn::kSongSlotCount == 255,
+              "SongColumn::kSongSlotCount must match SONG_MAX");
 
-// Song FX Scenes: column + mode page + pattern Step FX launcher.
-class SongFxScenes : public FeatureModule,
-                     public ScreenExtension,
-                     public SongListColumn,
-                     public SongModePage
+// Song FX Scenes: column + module page + pattern Step FX launcher.
+class SongFxScenes : public FeatureModule, public ModulePage, public SongColumn
 {
   public:
     const char* id() const override { return "songfxscenes"; }
+
+    void registerExtensions(ExtensionRegistrar& registrar) override;
 
     void init(FileSystem* fileSystem) override;
     void onWorkspaceClear() override;
@@ -62,36 +59,23 @@ class SongFxScenes : public FeatureModule,
     void onProjectOpen(const char* projectPath, const char* projectName) override;
     void onProjectSave(const char* projectPath, const char* projectName) override;
 
-    ScreenExtension* screenExtension() override { return this; }
-    ScreenId screen() const override { return ScreenId::Song; }
-    SongListColumn* asSongListColumn() override { return this; }
-    SongModePage* asSongModePage() override { return this; }
-    uint32_t startOption() const override { return 2; }
-
     const char* header() const override { return "FX"; }
     const char* focusEncoderLabel() const override { return "Scene"; }
     void formatCell(uint8_t slot, char* out, uint8_t outSize) const override;
-    void onEncoder(SongScreenHost& host, uint8_t slot, int8_t delta) override;
-    void onClear(SongScreenHost& host, uint8_t slot) override;
+    void onEncoder(PageHost& host, uint8_t slot, int8_t delta) override;
+    void onClear(PageHost& host, uint8_t slot) override;
     void onInserted(uint8_t index, bool duplicate) override;
     void onRemoved(uint8_t index) override;
     void clearAll() override;
     void onSlotStart(uint8_t slot) override;
 
     const char* title() const override { return "FX Scene"; }
-    bool canOpen(SongScreenHost& host) const override;
-    void onShow(SongScreenHost& host) override;
-    void onHide(SongScreenHost& host) override;
-    void onEncoder(SongScreenHost& host, int8_t delta) override;
-    void onScreenButton(SongScreenHost& host, uint8_t button, uint8_t state) override;
-    void onNavigate(SongScreenHost& host, int8_t delta) override;
-    void onHorizontalNavigate(SongScreenHost& host, int8_t delta) override;
-    void onClearFocused(SongScreenHost& host) override;
-    void onBack(SongScreenHost& host) override;
+    void onShow(PageHost& host) override;
+    void onHide(PageHost& host) override;
+    void onInput(PageHost& host, const InputEvent& event) override;
 
-    uint8_t patternStepFxCount() const override { return 1; }
-    const PatternStepFxInfo* patternStepFx(uint8_t index) const override;
-    bool onPatternStepFx(uint8_t typeId, uint8_t value) override;
+    // Called from the registered Pattern Step FX function pointer.
+    bool onPatternStepFx(uint8_t typeId, uint8_t value);
 
   private:
     void clearBank();
@@ -104,15 +88,15 @@ class SongFxScenes : public FeatureModule,
     uint8_t sceneForSlot(uint8_t slot) const;
     void clearAllPerformanceFx();
     void applyScene(uint8_t sceneIndex); // 0..7 — clears all FX, then applies scene
-    void refreshEditorUi(SongScreenHost& host);
+    void refreshEditorUi(PageHost& host);
     void formatEntryName(uint8_t entry, char* out, uint8_t outSize) const;
     void formatEntryValue(uint8_t entry, char* out, uint8_t outSize) const;
     bool sceneHasEntries(uint8_t sceneIndex) const;
     uint8_t nextFxId(uint8_t current, int8_t delta) const;
     int16_t clampFxValue(uint8_t fxId, int16_t value) const;
-    void selectEditingScene(SongScreenHost& host, uint8_t sceneIndex);
-    void changeFocusedFxType(SongScreenHost& host, int8_t delta);
-    void changeFocusedFxValue(SongScreenHost& host, int8_t delta);
+    void selectEditingScene(PageHost& host, uint8_t sceneIndex);
+    void changeFocusedFxType(PageHost& host, int8_t delta);
+    void changeFocusedFxValue(PageHost& host, int8_t delta);
 
     FileSystem* fileSystem = nullptr;
     uint8_t editingScene = 0; // 0..7 while editor open

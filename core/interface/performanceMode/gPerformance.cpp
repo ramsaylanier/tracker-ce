@@ -1,7 +1,9 @@
-#include "FeatureModuleRegistry.h"
+#include "core/modulePageHost.h"
+#include "core/interfaceDefs.h"
 #include "mtSequencer.h"
 #include "performanceEngine.h"
 #include "performanceMode.h"
+#include "sdk/Services.h"
 
 #include <cstdio>
 
@@ -359,15 +361,39 @@ void cPerformanceMode::colorTracksLabel(uint8_t button, uint8_t state)
 //##############################################################################################
 //###############################     PERFORMANCE MODULE PAGES   ###############################
 //##############################################################################################
-void cPerformanceMode::showPerformancePage(PerformancePage* page)
+void cPerformanceMode::bindPerformancePageHost()
+{
+    ScreenChrome chrome{};
+    chrome.softLabels = label;
+    chrome.setTitle = [](const char* title)
+    {
+        performanceMode.titleBar->show();
+        performanceMode.titleBar->setTitle(title != nullptr ? title : "");
+    };
+    chrome.isShiftPressed = []()
+    {
+        return performanceMode.buttons->isButtonPressed(interfaceButtonShift);
+    };
+    chrome.onClose = []() { performanceMode.hidePerformancePage(); };
+    getPerformancePageHost().bind(chrome);
+}
+
+void cPerformanceMode::showPerformancePage(ModulePage* page)
 {
     if (page == nullptr)
     {
         return;
     }
 
+    bindPerformancePageHost();
+    PageHost& host = getPerformancePageHost();
+    if (!page->canOpen(host))
+    {
+        return;
+    }
+
     activePerformancePage = page;
-    page->onShow(getPerformancePageHost());
+    page->onShow(host);
 }
 
 void cPerformanceMode::hidePerformancePage()
@@ -377,23 +403,18 @@ void cPerformanceMode::hidePerformancePage()
         return;
     }
 
-    PerformancePage* page = activePerformancePage;
+    ModulePage* page = activePerformancePage;
     activePerformancePage = nullptr;
     activePerformancePageIndex = 0;
     page->onHide(getPerformancePageHost());
     // Restore the track strip only when leaving module pages entirely.
-    // Page-to-page cycling calls onHide without this so the next onShow can paint.
-    getPerformancePageHost().restoreTrackLabels();
-}
-
-void cPerformanceMode::togglePerformancePage()
-{
-    cyclePerformancePage();
+    getPerformanceService().restoreTrackLabels();
 }
 
 bool cPerformanceMode::cyclePerformancePage()
 {
-    const uint8_t pageCount = featureModules.performancePageCount();
+    bindPerformancePageHost();
+    const uint8_t pageCount = performanceExtensions().modulePageCount();
     if (pageCount == 0)
     {
         if (activePerformancePage != nullptr)
@@ -406,7 +427,7 @@ bool cPerformanceMode::cyclePerformancePage()
     if (activePerformancePage == nullptr)
     {
         activePerformancePageIndex = 0;
-        showPerformancePage(featureModules.getPerformancePage(0));
+        showPerformancePage(performanceExtensions().modulePageAt(0));
         return activePerformancePage != nullptr;
     }
 
@@ -417,15 +438,14 @@ bool cPerformanceMode::cyclePerformancePage()
         return false;
     }
 
-    PerformancePage* nextPage = featureModules.getPerformancePage(nextIndex);
+    ModulePage* nextPage = performanceExtensions().modulePageAt(nextIndex);
     if (nextPage == nullptr)
     {
         hidePerformancePage();
         return false;
     }
 
-    // Switch pages without restoring the track strip between them.
-    PerformancePage* prevPage = activePerformancePage;
+    ModulePage* prevPage = activePerformancePage;
     activePerformancePageIndex = nextIndex;
     activePerformancePage = nextPage;
     if (prevPage != nullptr)

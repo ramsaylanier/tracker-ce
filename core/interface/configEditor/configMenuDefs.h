@@ -33,6 +33,7 @@ struct strItemTypeValue8
     uint8_t max;
     uint8_t interval; // narazie nie uzywane
     uint8_t dev;
+    void (*funct1)(void) = nullptr;
 };
 
 struct strItemTypeListValues

@@ -6,13 +6,17 @@
 #   MODULE_INSTANCE := performanceFxScenes
 #   MODULE_HEADER   := PerformanceFxScenes.h
 #   MODULE_SRCS     := PerformanceFxScenes.cpp   # optional; defaults to *.cpp
-#   MODULE_ORDER    := 10                        # optional; Performance page cycle order
+#   MODULE_ORDER    := 10                        # optional; sorts registry + addPage order
 
 FEATURE_MODULE_DIRS ?=
 
 FEATURE_MODULE_OBJS :=
 GENERATED_FEATURE_MODULE_REGISTRY := $(BUILD_DIR)/feature_modules_registry.cpp
 GENERATED_FEATURE_MODULE_REGISTRY_OBJ := $(OBJ_DIR)/feature_modules_registry.o
+# Stamp tracks the selected module-dir list so changing FEATURE_MODULE_DIRS
+# regenerates the registry even when no module.mk file changed.
+FEATURE_MODULE_DIRS_STAMP := $(BUILD_DIR)/feature_modules_dirs.stamp
+FEATURE_MODULE_DIRS_NORM := $(strip $(foreach _d,$(FEATURE_MODULE_DIRS),$(abspath $(_d))))
 
 # $(1) = MODULE_NAME, $(2) = absolute source path
 define _feature_module_add_src
@@ -30,8 +34,14 @@ MODULE_INSTANCE :=
 MODULE_HEADER :=
 MODULE_SRCS :=
 MODULE_ORDER :=
+MODULE_DEFINES :=
 include $(abspath $(1))/module.mk
 INCLUDES += -I$(abspath $(1))
+# Bake MODULE_DEFINES into DEFINES immediately (recursive += would lose them when
+# the next module clears MODULE_DEFINES).
+ifneq ($$(strip $$(MODULE_DEFINES)),)
+DEFINES := $$(DEFINES) $$(MODULE_DEFINES)
+endif
 _fm_name := $$(MODULE_NAME)
 _fm_srcs := $$(MODULE_SRCS)
 ifeq ($$(_fm_srcs),)
@@ -44,10 +54,23 @@ ifneq ($(strip $(FEATURE_MODULE_DIRS)),)
 $(foreach _d,$(FEATURE_MODULE_DIRS),$(eval $(call _feature_module_load,$(_d))))
 endif
 
+.PHONY: _always_check_feature_module_dirs
+_always_check_feature_module_dirs:
+
+$(FEATURE_MODULE_DIRS_STAMP): _always_check_feature_module_dirs
+	@mkdir -p $(dir $@)
+	@if ! printf '%s\n' '$(FEATURE_MODULE_DIRS_NORM)' | cmp -s - $@ 2>/dev/null; then \
+		printf '%s\n' '$(FEATURE_MODULE_DIRS_NORM)' > $@; \
+		rm -f $(GENERATED_FEATURE_MODULE_REGISTRY) $(GENERATED_FEATURE_MODULE_REGISTRY_OBJ); \
+	fi
+
 $(GENERATED_FEATURE_MODULE_REGISTRY): modules/generate_registry.py \
+		$(FEATURE_MODULE_DIRS_STAMP) \
 		$(foreach _d,$(FEATURE_MODULE_DIRS),$(abspath $(_d))/module.mk)
 	@mkdir -p $(dir $@)
-	python3 modules/generate_registry.py -o $@ $(foreach _d,$(FEATURE_MODULE_DIRS),$(abspath $(_d)))
+	# Drop the .o so a same-second stamp/cpp rewrite cannot leave a stale object.
+	@rm -f $(GENERATED_FEATURE_MODULE_REGISTRY_OBJ)
+	python3 modules/generate_registry.py -o $@ $(FEATURE_MODULE_DIRS_NORM)
 
 $(GENERATED_FEATURE_MODULE_REGISTRY_OBJ): $(GENERATED_FEATURE_MODULE_REGISTRY)
 	@mkdir -p $(dir $@)

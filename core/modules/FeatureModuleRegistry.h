@@ -1,7 +1,8 @@
 #ifndef MODULES_FEATUREMODULEREGISTRY_H_
 #define MODULES_FEATUREMODULEREGISTRY_H_
 
-#include "FeatureModule.h"
+#include "sdk/FeatureModule.h"
+#include "sdk/Registrar.h"
 
 #include <stdint.h>
 
@@ -25,34 +26,17 @@ class FeatureModuleRegistry
     uint8_t count() const { return moduleCount; }
     FeatureModule* get(uint8_t index) const;
 
-    uint8_t performancePageCount() const;
-    PerformancePage* getPerformancePage(uint8_t index) const;
-
-    // First Song list-column extension, or nullptr.
-    SongListColumn* getSongListColumn() const;
-
-    // Song Mini-menu mode pages contributed by feature modules (after playlist).
-    uint8_t songModePageCount() const;
-    SongModePage* getSongModePage(uint8_t index) const;
-    SongModePage* findSongModePageByOption(uint32_t option) const;
-    // Menu index for option (1..), or 0 if not found / playlist.
-    uint8_t songModeIndexForOption(uint32_t option) const;
-
-    // Pattern Step FX catalog collected at initAll.
-    uint8_t patternStepFxCount() const { return patternFxCount; }
+    // Pattern Step FX lookups used by the sequencer and the FX picker.
+    uint8_t patternStepFxCount() const;
     const PatternStepFxInfo* patternStepFxAt(uint8_t index) const;
     const PatternStepFxInfo* findPatternStepFx(uint8_t typeId) const;
     void dispatchPatternStepFx(uint8_t typeId, uint8_t value);
 
   private:
-    void collectPatternStepFx();
-    bool isPatternStepFxLetterTaken(char letter) const;
+    void registerAllExtensions();
 
     FeatureModule* modules[kMaxModules] = {};
     uint8_t moduleCount = 0;
-
-    const PatternStepFxInfo* patternFx[kMaxModulePatternStepFx] = {};
-    uint8_t patternFxCount = 0;
 };
 
 void registerFeatureModules(FeatureModuleRegistry& registry);

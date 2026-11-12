@@ -10,6 +10,7 @@
 #include "polyassert.h"
 
 #include "convertOldFileVersionVolume.h"
+#include "sdk/Registrar.h"
 
 #include <string.h>
 #include <tuple>
@@ -73,6 +74,7 @@ void cFileManager::loadPatternFromWorkspace(uint8_t index)
             sequencer.copyBufferToBufferPattern((uint8_t*)&fileManagerPatternBuffer))
         {
             report(" no blocking pattern load - success ", loadedPattern);
+            extensionCatalog().notifyPatternLoad(loadedPattern);
             moveToNextOperationStep();
             return;
         }
@@ -84,6 +86,7 @@ void cFileManager::loadPatternFromWorkspace(uint8_t index)
 
         report(" no blocking pattern load - file no exist ", patternFilename);
         sequencer.clearPattern(&fileManagerPatternBuffer);
+        extensionCatalog().notifyPatternLoad(loadedPattern);
         moveToNextOperationStep();
         return;
     }
@@ -153,6 +156,7 @@ void cFileManager::savePatternToWorkspace()
         report(" no blocking pattern save - success ", mtProject.values.actualPattern);
         clearPatternChanged(mtProject.values.actualPattern);
         sequencer.saveToFileDone();
+        extensionCatalog().notifyPatternSave(mtProject.values.actualPattern);
 
         moveToNextOperationStep();
         return;
@@ -206,11 +210,13 @@ bool cFileManager::loadWorkspacePatternNow(uint8_t index)
     if (status)
     {
         report(" load pattern now - success ", loadedPattern);
+        extensionCatalog().notifyPatternLoad(loadedPattern);
     }
     else
     {
         report(" load pattern now - failed ", loadedPattern);
         sequencer.clearPattern(destPattern);
+        extensionCatalog().notifyPatternLoad(loadedPattern);
     }
 
     return status;
@@ -249,16 +255,17 @@ bool cFileManager::saveWorkspacePatternNow(uint8_t index)
 
         if (status == true)
         {
-            report(" save pattern now - success ", mtProject.values.actualPattern);
+            report(" save pattern now - success ", index);
+            extensionCatalog().notifyPatternSave(index);
         }
         else
         {
-            report(" save pattern now - failed ", mtProject.values.actualPattern);
+            report(" save pattern now - failed ", index);
         }
     }
     else
     {
-        report(" save pattern now - no changes ", mtProject.values.actualPattern);
+        report(" save pattern now - no changes ", index);
     }
 
     return status;

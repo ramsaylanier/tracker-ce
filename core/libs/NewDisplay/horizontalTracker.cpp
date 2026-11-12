@@ -229,7 +229,7 @@ void cHorizontalTracker::update()
             visibleTracksCount = 4;
 
         trackHight = (height - 7 - stepsNumbersHight) / 4;
-        paramCount = 4;
+        paramCount = tracks->showExtColumn ? 5 : 4;
     }
 
     backgroundDivider();
@@ -273,6 +273,11 @@ void cHorizontalTracker::update5()
     if (displayMode == 0 || displayMode & 8)
     {
         fxes2();
+    }
+
+    if (paramCount >= 5)
+    {
+        extColumn();
     }
 
     tracksNames();
@@ -553,17 +558,18 @@ void cHorizontalTracker::selection()
                 }
             }
         }
-        else if (paramCount == 4)
+        else if (paramCount >= 4)
         {
+            const uint8_t rowH = trackHight / paramCount;
             for (uint8_t i = 0; i < 8; i++)
             {
                 uint16_t SelPosY =
-                  select1_y + (trackHight * i) + (trackHight / 4) * tracks->selectedParam + 2;
+                  select1_y + (trackHight * i) + rowH * tracks->selectedParam + 2;
 
                 if (SelPosY <= select2_y && SelPosY >= select1_y)
                 {
                     API_VERTEX2F(select1_x + 2, SelPosY);
-                    API_VERTEX2F(select2_x - 2, SelPosY + (trackHight / 4) - 3);
+                    API_VERTEX2F(select2_x - 2, SelPosY + rowH - 3);
                 }
             }
         }
@@ -634,11 +640,11 @@ void cHorizontalTracker::selection()
 
             rect_select_hight = (trackHight / 2) - 2;
         }
-        else if (paramCount == 4)
+        else if (paramCount >= 4)
         {
-            rect_select_y = select1_y + (trackHight / 4) * tracks->selectedParam +
-                            2 /*fourParamsSelOffsetY[tracks->selectedParam]*/;
-            rect_select_hight = (trackHight / 4) - 3;
+            const uint8_t rowH = trackHight / paramCount;
+            rect_select_y = select1_y + rowH * tracks->selectedParam + 2;
+            rect_select_hight = rowH - 3;
         }
 
         API_COLOR(selection_color);
@@ -819,7 +825,9 @@ void cHorizontalTracker::notes()
 
     uint8_t offset_x = trackHeadWidth + fourParamsOffsetX[0];
     uint8_t offset_y = posY + stepsNumbersHight + trackHight / 8;
-    if (paramCount == 1)
+    if (paramCount >= 5)
+        offset_y = posY + stepsNumbersHight + (trackHight / paramCount) / 2;
+    else if (paramCount == 1)
         offset_y = posY + stepsNumbersHight + (trackHight / 2);
     else if (paramCount == 2)
         offset_y = posY + stepsNumbersHight + (trackHight / 2) - (trackHight / 4);
@@ -874,7 +882,9 @@ void cHorizontalTracker::instruments()
 
     uint8_t offset_x = trackHeadWidth + fourParamsOffsetX[1];
     uint8_t offset_y = posY + stepsNumbersHight + (trackHight / 4) + (trackHight / 8);
-    if (paramCount == 1)
+    if (paramCount >= 5)
+        offset_y = posY + stepsNumbersHight + (trackHight / paramCount) + (trackHight / paramCount) / 2;
+    else if (paramCount == 1)
         offset_y = posY + stepsNumbersHight + (trackHight / 2);
     else if (paramCount == 2)
         offset_y = posY + stepsNumbersHight +
@@ -938,7 +948,10 @@ void cHorizontalTracker::fxes1()
 
     uint8_t offset_x = trackHeadWidth + fourParamsOffsetX[2];
     uint8_t offset_y = posY + stepsNumbersHight + (trackHight / 2) + (trackHight / 8);
-    if (paramCount == 1)
+    if (paramCount >= 5)
+        offset_y =
+          posY + stepsNumbersHight + (trackHight / paramCount) * 2 + (trackHight / paramCount) / 2;
+    else if (paramCount == 1)
         offset_y = posY + stepsNumbersHight + (trackHight / 2);
     else if (paramCount == 2)
         offset_y = posY + stepsNumbersHight +
@@ -995,7 +1008,10 @@ void cHorizontalTracker::fxes2()
 
     uint8_t offset_x = trackHeadWidth + fourParamsOffsetX[3];
     uint8_t offset_y = posY + stepsNumbersHight + (trackHight / 4) * 3 + (trackHight / 8);
-    if (paramCount == 1)
+    if (paramCount >= 5)
+        offset_y =
+          posY + stepsNumbersHight + (trackHight / paramCount) * 3 + (trackHight / paramCount) / 2;
+    else if (paramCount == 1)
         offset_y = posY + stepsNumbersHight + (trackHight / 2);
     else if (paramCount == 2)
         offset_y = posY + stepsNumbersHight + (trackHight / 2) + (trackHight / 4);
@@ -1034,6 +1050,56 @@ void cHorizontalTracker::fxes2()
             }
 
             String2Bitmaps(param_x, param_y, &fonts[1], text, param_length[3]);
+        }
+    }
+    API_END();
+    API_RESTORE_CONTEXT();
+}
+
+void cHorizontalTracker::extColumn()
+{
+    API_SAVE_CONTEXT();
+    API_COLOR(colors[5]);
+    actualColor = lastFontColor = colors[5];
+    lastFontHandle = -1;
+    API_BEGIN(BITMAPS);
+
+    uint8_t offset_x = trackHeadWidth + fourParamsOffsetX[3];
+    uint8_t offset_y =
+      posY + stepsNumbersHight + (trackHight / paramCount) * 4 + (trackHight / paramCount) / 2;
+
+    int8_t mark_t = -1;
+    int8_t mark_s = (tracks->actualStep - tracks->middleVisibleStep) + actualStepPosition;
+    if (tracks->selectedParam == 4 && tracks->selectState)
+    {
+        mark_t = tracks->actualTrack - firstVisibleTrack;
+    }
+
+    for (uint16_t i = 0; i < visibleStepsCount; i++)
+    {
+        for (uint16_t j = 0; j < visibleTracksCount; j++)
+        {
+            int16_t param_x = offset_x + i * stepWidth;
+            int16_t param_y = offset_y + j * trackHight;
+            char* text =
+              &tracks->track[firstVisibleTrack + j].row[i + stepsDataStructOffset].ext[0];
+
+            if (selectActive && mark_t >= 0 && param_x > select1_x && param_x < select2_x &&
+                param_y > select1_y && param_y < select2_y)
+                actualColor = colors[14];
+            else if (i == mark_s && j == mark_t)
+                actualColor = colors[14];
+            else
+            {
+                if (tracks->inactive[firstVisibleTrack + j])
+                    actualColor = colors[12];
+                else if (*text == 0 || *text == '-')
+                    actualColor = colors[9];
+                else
+                    actualColor = colors[5];
+            }
+
+            String2Bitmaps(param_x, param_y, &fonts[1], text, param_length[4]);
         }
     }
     API_END();

@@ -31,6 +31,7 @@ class cMenuGroup : public cMenuBase
     cMenuGroup(cMenuGroup& parent, const char* name, uint8_t childs_count)
       : cMenuBase(menuTypeGroup)
       , parentMenu(&parent)
+      , childsCapacity(childs_count)
       , childsCount(childs_count)
       , childs(new hMenuItem[childs_count]())
       , childsNames(new char*[childs_count]())
@@ -52,6 +53,24 @@ class cMenuGroup : public cMenuBase
     cMenuGroup* getSelChild() { return (cMenuGroup*)childs[selectedItem]; }
 
     uint8_t getCount() { return childsCount; }
+
+    // Visible child count; must not exceed capacity allocated at construction.
+    void setChildCount(uint8_t count)
+    {
+        if (count > childsCapacity)
+        {
+            count = childsCapacity;
+        }
+        childsCount = count;
+        if (childsCount == 0)
+        {
+            selectedItem = 0;
+        }
+        else if (selectedItem >= childsCount)
+        {
+            selectedItem = childsCount - 1;
+        }
+    }
 
     char** getNames() { return childsNames; }
 
@@ -78,7 +97,8 @@ class cMenuGroup : public cMenuBase
 
   private:
     cMenuGroup* parentMenu;
-    const uint8_t childsCount;
+    const uint8_t childsCapacity;
+    uint8_t childsCount;
     hMenuItem* childs;
     char** childsNames;
     char** childsValues;
@@ -101,6 +121,7 @@ class cMenuItem : public cMenuBase
               menu_item_t type,
               const void* setupPtr)
       : cMenuBase(menuTypeItem)
+      , parentMenu(&parent)
       , itemName(name)
       , itemDesc(desctription)
       , itemType(type)
@@ -108,55 +129,38 @@ class cMenuItem : public cMenuBase
       , ptrValueText(itemType == menuItemTypeValueU8 || itemType == menuTypeItemListValues
                        ? new char[kTempValueTextLen + 1]
                        : nullptr)
+      , slot(parent.getNextSlotNumber())
     {
-        uint8_t slot = parent.getNextSlotNumber();
-        if (slot < parent.childsCount)
+        if (slot < parent.childsCapacity)
         {
             parent.childs[slot] = this;
             parent.childsNames[slot] = (char*)name;
         }
         valueEditState = 0;
-
-        // safe check
-        switch (itemType)
-        {
-            case menuTypeItemListText:
-            {
-                *((strItemTypeListText*)itemSetup)->value =
-                  clamp<uint8_t>(*((strItemTypeListText*)itemSetup)->value,
-                                 0,
-                                 (((strItemTypeListText*)itemSetup)->count) - 1);
-                break;
-            }
-            case menuTypeItemListTextWithAction:
-            {
-                *((strItemTypeListTextWithAction*)itemSetup)->value =
-                  clamp<uint8_t>(*((strItemTypeListTextWithAction*)itemSetup)->value,
-                                 0,
-                                 (((strItemTypeListTextWithAction*)itemSetup)->count) - 1);
-                break;
-            }
-            case menuTypeItemLabel:
-            {
-                if (((strItemTypeLabel*)itemSetup)->text == nullptr)
-                {
-                    ((strItemTypeLabel*)itemSetup)->text = ptrEmptyName;
-                }
-                break;
-            }
-            case menuTypeItemLabelPtr:
-            {
-                if (((strItemTypeLabelPtr*)itemSetup)->text == nullptr)
-                {
-                    ((strItemTypeLabelPtr*)itemSetup)->text = (const char**)&ptrEmptyName;
-                }
-                break;
-            }
-            default: break;
-        }
+        applySetupSafety();
     }
 
     ~cMenuItem() {}
+
+    // Rebind name/type/setup after construction (used by Modules config pool).
+    void reconfigure(const char* name, const char* desctription, menu_item_t type, const void* setupPtr)
+    {
+        itemName = name;
+        itemDesc = desctription;
+        itemType = type;
+        itemSetup = setupPtr;
+        if (parentMenu != nullptr && slot < parentMenu->childsCapacity)
+        {
+            parentMenu->childsNames[slot] = (char*)name;
+        }
+        if ((itemType == menuItemTypeValueU8 || itemType == menuTypeItemListValues) &&
+            ptrValueText == nullptr)
+        {
+            ptrValueText = new char[kTempValueTextLen + 1];
+        }
+        valueEditState = 0;
+        applySetupSafety();
+    }
 
     char* getValue()
     {
@@ -204,6 +208,58 @@ class cMenuItem : public cMenuBase
     void resetValueEditState() { valueEditState = 0; }
 
   private:
+    void applySetupSafety()
+    {
+        switch (itemType)
+        {
+            case menuTypeItemListText:
+            {
+                if (itemSetup == nullptr || ((strItemTypeListText*)itemSetup)->value == nullptr ||
+                    ((strItemTypeListText*)itemSetup)->count == 0)
+                {
+                    break;
+                }
+                *((strItemTypeListText*)itemSetup)->value =
+                  clamp<uint8_t>(*((strItemTypeListText*)itemSetup)->value,
+                                 0,
+                                 (((strItemTypeListText*)itemSetup)->count) - 1);
+                break;
+            }
+            case menuTypeItemListTextWithAction:
+            {
+                if (itemSetup == nullptr ||
+                    ((strItemTypeListTextWithAction*)itemSetup)->value == nullptr ||
+                    ((strItemTypeListTextWithAction*)itemSetup)->count == 0)
+                {
+                    break;
+                }
+                *((strItemTypeListTextWithAction*)itemSetup)->value =
+                  clamp<uint8_t>(*((strItemTypeListTextWithAction*)itemSetup)->value,
+                                 0,
+                                 (((strItemTypeListTextWithAction*)itemSetup)->count) - 1);
+                break;
+            }
+            case menuTypeItemLabel:
+            {
+                if (itemSetup != nullptr && ((strItemTypeLabel*)itemSetup)->text == nullptr)
+                {
+                    ((strItemTypeLabel*)itemSetup)->text = ptrEmptyName;
+                }
+                break;
+            }
+            case menuTypeItemLabelPtr:
+            {
+                if (itemSetup != nullptr && ((strItemTypeLabelPtr*)itemSetup)->text == nullptr)
+                {
+                    ((strItemTypeLabelPtr*)itemSetup)->text = (const char**)&ptrEmptyName;
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+
+    cMenuGroup* parentMenu;
     const char* itemName;
     const char* itemDesc;
     menu_item_t itemType;
@@ -213,6 +269,7 @@ class cMenuItem : public cMenuBase
     char* ptrValueText;
 
     uint8_t valueEditState;
+    uint8_t slot;
 
     friend class cMenuGroup;
 };

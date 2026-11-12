@@ -11,6 +11,8 @@
 #include "mtSequencer.h"
 #include "mtStructs.h"
 #include "sampleRecorder/sampleRecorder.h"
+#include "sdk/Columns.h"
+#include "sdk/Registrar.h"
 
 #include "configEditor/configEditor.h"
 #include "core/songTimer.h"
@@ -810,6 +812,14 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
         if (!playerRow.cancelStep)
         {
             playerRow.micromove.arm(playerRow.stepToSend);
+
+            // Same path as pattern Step FX dispatch: Sequencer::tick runs inside the audio
+            // buffer callback (TrackerImpl::updateAudioBuffers), not the main loop.
+            if (PatternColumn* column = extensionCatalog().patternColumnAt(0))
+            {
+                column->onStep(static_cast<uint8_t>(row),
+                               static_cast<uint16_t>(playerRow.actual_pos));
+            }
         }
     }
 

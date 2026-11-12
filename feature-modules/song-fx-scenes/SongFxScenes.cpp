@@ -22,9 +22,16 @@ static const PatternStepFxInfo kSongFxScenePatternStepFx = {
     1,
 };
 
-const PatternStepFxInfo* SongFxScenes::patternStepFx(uint8_t index) const
+bool songFxScenesPatternStepFxHandler(uint8_t typeId, uint8_t value)
 {
-    return index == 0 ? &kSongFxScenePatternStepFx : nullptr;
+    return songFxScenes.onPatternStepFx(typeId, value);
+}
+
+void SongFxScenes::registerExtensions(ExtensionRegistrar& registrar)
+{
+    registrar.addPage(ScreenId::Song, this, 15);
+    registrar.addSongColumn(this);
+    registrar.addPatternStepFx(&kSongFxScenePatternStepFx, &songFxScenesPatternStepFxHandler);
 }
 
 bool SongFxScenes::onPatternStepFx(uint8_t typeId, uint8_t value)
@@ -140,14 +147,14 @@ bool SongFxScenes::validateHeader() const
 
 void SongFxScenes::clampSongSlotScenes()
 {
-    for (uint8_t i = 0; i < SongListColumn::kSongSlotCount; i++)
+    for (uint8_t i = 0; i < SongColumn::kSongSlotCount; i++)
     {
         if (externalRamSongFxScenesBank.songSlotScene[i] > kSongFxScenesCount)
         {
             externalRamSongFxScenesBank.songSlotScene[i] = kSongFxScenesNone;
         }
     }
-    externalRamSongFxScenesBank.songSlotScene[SongListColumn::kSongSlotCount] = 0;
+    externalRamSongFxScenesBank.songSlotScene[SongColumn::kSongSlotCount] = 0;
 }
 
 bool SongFxScenes::readFile(const char* path)
@@ -191,7 +198,7 @@ void SongFxScenes::saveToWorkspace()
 
 uint8_t SongFxScenes::sceneForSlot(uint8_t slot) const
 {
-    if (slot >= SongListColumn::kSongSlotCount)
+    if (slot >= SongColumn::kSongSlotCount)
     {
         return kSongFxScenesNone;
     }
@@ -200,7 +207,7 @@ uint8_t SongFxScenes::sceneForSlot(uint8_t slot) const
 
 void SongFxScenes::assignSlot(uint8_t slot, uint8_t scene)
 {
-    if (slot >= SongListColumn::kSongSlotCount)
+    if (slot >= SongColumn::kSongSlotCount)
     {
         return;
     }
@@ -227,7 +234,7 @@ void SongFxScenes::formatCell(uint8_t slot, char* out, uint8_t outSize) const
     }
 
     out[0] = '\0';
-    if (slot >= SongListColumn::kSongSlotCount)
+    if (slot >= SongColumn::kSongSlotCount)
     {
         return;
     }
@@ -242,10 +249,10 @@ void SongFxScenes::formatCell(uint8_t slot, char* out, uint8_t outSize) const
     snprintf(out, outSize, "%u", static_cast<unsigned>(value));
 }
 
-void SongFxScenes::onEncoder(SongScreenHost& host, uint8_t slot, int8_t delta)
+void SongFxScenes::onEncoder(PageHost& host, uint8_t slot, int8_t delta)
 {
     (void)host;
-    if (slot >= SongListColumn::kSongSlotCount || delta == 0)
+    if (slot >= SongColumn::kSongSlotCount || delta == 0)
     {
         return;
     }
@@ -266,7 +273,7 @@ void SongFxScenes::onEncoder(SongScreenHost& host, uint8_t slot, int8_t delta)
     assignSlot(slot, static_cast<uint8_t>(value));
 }
 
-void SongFxScenes::onClear(SongScreenHost& host, uint8_t slot)
+void SongFxScenes::onClear(PageHost& host, uint8_t slot)
 {
     (void)host;
     assignSlot(slot, kSongFxScenesNone);
@@ -274,12 +281,12 @@ void SongFxScenes::onClear(SongScreenHost& host, uint8_t slot)
 
 void SongFxScenes::onInserted(uint8_t index, bool duplicate)
 {
-    if (index >= SongListColumn::kSongSlotCount - 1)
+    if (index >= SongColumn::kSongSlotCount - 1)
     {
         return;
     }
 
-    for (int i = SongListColumn::kSongSlotCount - 1; i > index; i--)
+    for (int i = SongColumn::kSongSlotCount - 1; i > index; i--)
     {
         externalRamSongFxScenesBank.songSlotScene[i] =
           externalRamSongFxScenesBank.songSlotScene[i - 1];
@@ -301,17 +308,17 @@ void SongFxScenes::onInserted(uint8_t index, bool duplicate)
 
 void SongFxScenes::onRemoved(uint8_t index)
 {
-    if (index >= SongListColumn::kSongSlotCount)
+    if (index >= SongColumn::kSongSlotCount)
     {
         return;
     }
 
-    for (uint8_t i = index; i < SongListColumn::kSongSlotCount - 1; i++)
+    for (uint8_t i = index; i < SongColumn::kSongSlotCount - 1; i++)
     {
         externalRamSongFxScenesBank.songSlotScene[i] =
           externalRamSongFxScenesBank.songSlotScene[i + 1];
     }
-    externalRamSongFxScenesBank.songSlotScene[SongListColumn::kSongSlotCount - 1] =
+    externalRamSongFxScenesBank.songSlotScene[SongColumn::kSongSlotCount - 1] =
       kSongFxScenesNone;
 
     saveToWorkspace();
@@ -327,11 +334,11 @@ void SongFxScenes::clearAll()
 
 void SongFxScenes::clearAllPerformanceFx()
 {
-    PerformancePageHost& host = getPerformancePageHost();
-    const uint8_t count = host.performanceFxCount();
+    PerformanceService& perf = getPerformanceService();
+    const uint8_t count = perf.performanceFxCount();
     for (uint8_t fxId = 1; fxId < count; fxId++)
     {
-        host.clearPerformanceFx(fxId);
+        perf.clearPerformanceFx(fxId);
     }
 }
 
@@ -345,16 +352,16 @@ void SongFxScenes::applyScene(uint8_t sceneIndex)
     // Replace prior row FX entirely — clear everything, then apply this scene.
     clearAllPerformanceFx();
 
-    PerformancePageHost& host = getPerformancePageHost();
+    PerformanceService& perf = getPerformanceService();
     const strSongFxScene& scene = externalRamSongFxScenesBank.scenes[sceneIndex];
     for (uint8_t i = 0; i < kSongFxEntriesPerScene; i++)
     {
         const uint8_t fxId = scene.entries[i].fxId;
-        if (fxId == 0 || fxId >= host.performanceFxCount())
+        if (fxId == 0 || fxId >= perf.performanceFxCount())
         {
             continue;
         }
-        host.applyPerformanceFx(fxId, scene.entries[i].value);
+        perf.applyPerformanceFx(fxId, scene.entries[i].value);
     }
 }
 
@@ -370,15 +377,9 @@ void SongFxScenes::onSlotStart(uint8_t slot)
     applyScene(static_cast<uint8_t>(scene - 1));
 }
 
-bool SongFxScenes::canOpen(SongScreenHost& host) const
+void SongFxScenes::onShow(PageHost& host)
 {
-    (void)host;
-    return true;
-}
-
-void SongFxScenes::onShow(SongScreenHost& host)
-{
-    const uint8_t scene = sceneForSlot(host.selectedSlot());
+    const uint8_t scene = sceneForSlot(getSongService().selectedSlot());
     if (scene >= 1 && scene <= kSongFxScenesCount)
     {
         editingScene = static_cast<uint8_t>(scene - 1);
@@ -403,7 +404,7 @@ void SongFxScenes::onShow(SongScreenHost& host)
     refreshEditorUi(host);
 }
 
-void SongFxScenes::selectEditingScene(SongScreenHost& host, uint8_t sceneIndex)
+void SongFxScenes::selectEditingScene(PageHost& host, uint8_t sceneIndex)
 {
     if (sceneIndex >= kSongFxScenesCount)
     {
@@ -427,59 +428,87 @@ void SongFxScenes::selectEditingScene(SongScreenHost& host, uint8_t sceneIndex)
     refreshEditorUi(host);
 }
 
-void SongFxScenes::onHide(SongScreenHost& host)
+void SongFxScenes::onHide(PageHost& host)
 {
     (void)host;
 }
 
-void SongFxScenes::onNavigate(SongScreenHost& host, int8_t delta)
+void SongFxScenes::onInput(PageHost& host, const InputEvent& event)
 {
-    if (delta == 0)
+    switch (event.kind)
     {
-        return;
+    case InputKind::SoftKey:
+        if (event.state != SoftKeyButtonState::Press || event.index >= kSongFxScenesCount)
+        {
+            return;
+        }
+        selectEditingScene(host, event.index);
+        break;
+
+    case InputKind::Encoder:
+        if (focusedField == 0)
+        {
+            changeFocusedFxType(host, event.delta);
+        }
+        else
+        {
+            changeFocusedFxValue(host, event.delta);
+        }
+        break;
+
+    case InputKind::Navigate:
+    {
+        if (event.delta == 0)
+        {
+            return;
+        }
+
+        int16_t next = static_cast<int16_t>(focusedEntry) + event.delta;
+        while (next < 0)
+        {
+            next += kSongFxEntriesPerScene;
+        }
+        while (next >= kSongFxEntriesPerScene)
+        {
+            next -= kSongFxEntriesPerScene;
+        }
+        focusedEntry = static_cast<uint8_t>(next);
+        refreshEditorUi(host);
+        break;
     }
 
-    int16_t next = static_cast<int16_t>(focusedEntry) + delta;
-    while (next < 0)
-    {
-        next += kSongFxEntriesPerScene;
-    }
-    while (next >= kSongFxEntriesPerScene)
-    {
-        next -= kSongFxEntriesPerScene;
-    }
-    focusedEntry = static_cast<uint8_t>(next);
-    refreshEditorUi(host);
-}
+    case InputKind::HNavigate:
+        if (event.delta == 0)
+        {
+            return;
+        }
+        focusedField = (focusedField == 0) ? 1 : 0;
+        refreshEditorUi(host);
+        break;
 
-void SongFxScenes::onHorizontalNavigate(SongScreenHost& host, int8_t delta)
-{
-    if (delta == 0)
+    case InputKind::Clear:
     {
-        return;
-    }
+        if (focusedEntry >= kSongFxEntriesPerScene)
+        {
+            return;
+        }
 
-    focusedField = (focusedField == 0) ? 1 : 0;
-    refreshEditorUi(host);
-}
-
-void SongFxScenes::onClearFocused(SongScreenHost& host)
-{
-    if (focusedEntry >= kSongFxEntriesPerScene)
-    {
-        return;
+        strSongFxEntry& e =
+          externalRamSongFxScenesBank.scenes[editingScene].entries[focusedEntry];
+        e.fxId = 0;
+        e.value = 0;
+        saveToWorkspace();
+        refreshEditorUi(host);
+        break;
     }
 
-    strSongFxEntry& e = externalRamSongFxScenesBank.scenes[editingScene].entries[focusedEntry];
-    e.fxId = 0;
-    e.value = 0;
-    saveToWorkspace();
-    refreshEditorUi(host);
-}
+    case InputKind::Back:
+        (void)host;
+        break;
 
-void SongFxScenes::onBack(SongScreenHost& host)
-{
-    (void)host;
+    default:
+        break;
+    }
 }
 
 bool SongFxScenes::sceneHasEntries(uint8_t sceneIndex) const
@@ -514,8 +543,7 @@ void SongFxScenes::formatEntryName(uint8_t entry, char* out, uint8_t outSize) co
         return;
     }
 
-    PerformancePageHost& perfHost = getPerformancePageHost();
-    const char* name = perfHost.performanceFxName(e.fxId);
+    const char* name = getPerformanceService().performanceFxName(e.fxId);
     snprintf(out, outSize, "%s", name != nullptr && name[0] != '\0' ? name : "?");
 }
 
@@ -536,14 +564,14 @@ void SongFxScenes::formatEntryValue(uint8_t entry, char* out, uint8_t outSize) c
     snprintf(out, outSize, "%d", static_cast<int>(e.value));
 }
 
-void SongFxScenes::refreshEditorUi(SongScreenHost& host)
+void SongFxScenes::refreshEditorUi(PageHost& host)
 {
     static char titleBuf[24];
     snprintf(titleBuf,
              sizeof(titleBuf),
              "FX Scene %u",
              static_cast<unsigned>(editingScene + 1));
-    host.setEditorTitle(titleBuf);
+    host.setTitle(titleBuf);
 
     static const char* const sceneLabels[kSongFxScenesCount] = {
         "1", "2", "3", "4", "5", "6", "7", "8"
@@ -551,35 +579,35 @@ void SongFxScenes::refreshEditorUi(SongScreenHost& host)
 
     for (uint8_t i = 0; i < kSongFxScenesCount; i++)
     {
-        SongEditorLabelState state = SongEditorLabelState::Empty;
+        LabelState state = LabelState::Empty;
         if (i == editingScene)
         {
-            state = SongEditorLabelState::Active;
+            state = LabelState::Active;
         }
         else if (sceneHasEntries(i))
         {
-            state = SongEditorLabelState::Filled;
+            state = LabelState::Filled;
         }
-        host.setScreenLabel(i, sceneLabels[i], state, nullptr);
+        host.setSoftKey(i, sceneLabels[i], state, nullptr);
     }
-    host.finishScreenLabels();
+    host.finishSoftKeys();
 
     static char nameBuf[kSongFxEntriesPerScene][24];
     static char valueBuf[kSongFxEntriesPerScene][12];
-    host.setEditorListCount(kSongFxEntriesPerScene);
+    host.setListCount(kSongFxEntriesPerScene);
     for (uint8_t i = 0; i < kSongFxEntriesPerScene; i++)
     {
         formatEntryName(i, nameBuf[i], sizeof(nameBuf[i]));
         formatEntryValue(i, valueBuf[i], sizeof(valueBuf[i]));
-        host.setEditorListRow(i, nameBuf[i], valueBuf[i]);
+        host.setListRow(i, nameBuf[i], valueBuf[i]);
     }
-    host.setEditorListFocus(focusedEntry, focusedField != 0);
-    host.refreshEditor();
+    host.setListFocus(focusedEntry, focusedField != 0);
+    host.refresh();
 }
 
 uint8_t SongFxScenes::nextFxId(uint8_t current, int8_t delta) const
 {
-    PerformancePageHost& host = getPerformancePageHost();
+    PerformanceService& host = getPerformanceService();
     const uint8_t count = host.performanceFxCount();
     // Skip fxId 0 (none); allow empty only via clear.
     const int16_t minId = 1;
@@ -645,7 +673,7 @@ uint8_t SongFxScenes::nextFxId(uint8_t current, int8_t delta) const
 
 int16_t SongFxScenes::clampFxValue(uint8_t fxId, int16_t value) const
 {
-    PerformancePageHost& host = getPerformancePageHost();
+    PerformanceService& host = getPerformanceService();
     const int16_t minV = host.performanceFxMin(fxId);
     const int16_t maxV = host.performanceFxMax(fxId);
     if (value < minV)
@@ -659,7 +687,7 @@ int16_t SongFxScenes::clampFxValue(uint8_t fxId, int16_t value) const
     return value;
 }
 
-void SongFxScenes::changeFocusedFxType(SongScreenHost& host, int8_t delta)
+void SongFxScenes::changeFocusedFxType(PageHost& host, int8_t delta)
 {
     if (delta == 0 || focusedEntry >= kSongFxEntriesPerScene)
     {
@@ -682,7 +710,7 @@ void SongFxScenes::changeFocusedFxType(SongScreenHost& host, int8_t delta)
     refreshEditorUi(host);
 }
 
-void SongFxScenes::changeFocusedFxValue(SongScreenHost& host, int8_t delta)
+void SongFxScenes::changeFocusedFxValue(PageHost& host, int8_t delta)
 {
     if (delta == 0 || focusedEntry >= kSongFxEntriesPerScene)
     {
@@ -703,26 +731,4 @@ void SongFxScenes::changeFocusedFxValue(SongScreenHost& host, int8_t delta)
     e.value = clampFxValue(e.fxId, static_cast<int16_t>(e.value + delta));
     saveToWorkspace();
     refreshEditorUi(host);
-}
-
-void SongFxScenes::onEncoder(SongScreenHost& host, int8_t delta)
-{
-    if (focusedField == 0)
-    {
-        changeFocusedFxType(host, delta);
-    }
-    else
-    {
-        changeFocusedFxValue(host, delta);
-    }
-}
-
-void SongFxScenes::onScreenButton(SongScreenHost& host, uint8_t button, uint8_t state)
-{
-    if (state != kPerformanceButtonPress || button >= kSongFxScenesCount)
-    {
-        return;
-    }
-
-    selectEditingScene(host, button);
 }

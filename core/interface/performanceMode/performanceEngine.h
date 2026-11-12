@@ -2,7 +2,7 @@
 #ifndef INTERFACE_PERFORMANCEMODE_PERFORMANCEENGINE_H_
 #define INTERFACE_PERFORMANCEMODE_PERFORMANCEENGINE_H_
 
-#include "PerformanceHost.h"
+#include "sdk/Scenes.h"
 #include "mtStructs.h"
 #include <stdint.h>
 

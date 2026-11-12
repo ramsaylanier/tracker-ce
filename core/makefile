@@ -31,7 +31,7 @@ _C_OBJS		= $(patsubst ./%.c, %.o, $(C_SRCS))
 OBJS		+= $(addprefix $(OBJ_DIR)/, $(_CPP_OBJS))
 OBJS		+= $(addprefix $(OBJ_DIR)/, $(_C_OBJS))
 
-INCLUDES=-I./include -I./config -I./source -I./synth -I./libs -I./libs/Audio -I./libs/ElapsedMillis -I./libs/SerialFlash -I./libs/SPI -I./libs/Audio/utility -I./libs/FT812 -I./libs/fonts -I./libs/NewDisplay -I./interface -I./interface/core -I./effector -I./FileManager -I./Exporter -I./AudioEngine -I./modules -I./libs/Audio/Polyverb -I./AudioEngine/ConstantValues -I./AudioEngine/MasterEnhancer -I${POLYUTIL_DIR}/include -I${POLYUTIL_DIR}/3rdparty -I${POLYSYNTH_DIR}/include  
+INCLUDES=-I./include -I./config -I./source -I./synth -I./libs -I./libs/Audio -I./libs/ElapsedMillis -I./libs/SerialFlash -I./libs/SPI -I./libs/Audio/utility -I./libs/FT812 -I./libs/fonts -I./libs/NewDisplay -I./interface -I./interface/core -I./effector -I./FileManager -I./Exporter -I./AudioEngine -I./modules -I./modules/sdk -I./libs/Audio/Polyverb -I./AudioEngine/ConstantValues -I./AudioEngine/MasterEnhancer -I${POLYUTIL_DIR}/include -I${POLYUTIL_DIR}/3rdparty -I${POLYSYNTH_DIR}/include  
 
 # External feature modules (directories outside core/, possibly other repos)
 include modules/external_modules.mk

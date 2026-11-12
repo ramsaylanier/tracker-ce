@@ -1,3 +1,4 @@
+#include "SampleInstrumentFxQuery.h"
 #include "ampLogarythmicValues.h"
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
@@ -393,7 +394,7 @@ AUDIO_CORE_RAM void playerEngine::handleInitNoteOnAllEnvelopes()
 
     handleInitNoteOnEnvelope(envAmp);
 
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (SampleInstrumentFx::filterEnable(currentInstrument_idx))
     {
         handleInitNoteOnEnvelope(envCutoff);
     }
@@ -414,29 +415,28 @@ AUDIO_CORE_RAM void playerEngine::handleInitNoteOnAllEnvelopes()
 
 AUDIO_CORE_RAM void playerEngine::handleNoteOnFilter()
 {
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (SampleInstrumentFx::filterEnable(currentInstrument_idx))
     {
         filterConnect();
 
         for (int channel = 0; channel < (int)filterPtr.size(); channel++)
         {
-            filterPtr[channel]->resonance(mtProject.instrument[currentInstrument_idx].resonance +
+            filterPtr[channel]->resonance(SampleInstrumentFx::resonance(currentInstrument_idx) +
                                           RESONANCE_OFFSET);
         }
         if (!isActiveEnvelope(envCutoff))
-            modCutoff(mtProject.instrument[currentInstrument_idx].cutOff);
+            modCutoff(SampleInstrumentFx::cutOff(currentInstrument_idx));
 
-        changeFilterType(mtProject.instrument[currentInstrument_idx].filterType);
+        changeFilterType(SampleInstrumentFx::filterType(currentInstrument_idx));
     }
-    else if (!mtProject.instrument[currentInstrument_idx].filterEnable)
+    else
     {
         filterDisconnect();
     }
 
     for (int channel = 0; channel < (int)filterPtr.size(); channel++)
     {
-        filterPtr[channel]->setOverdriveAmount(
-          mtProject.instrument[currentInstrument_idx].overdrive);
+        filterPtr[channel]->setOverdriveAmount(SampleInstrumentFx::overdrive(currentInstrument_idx));
     }
 }
 
@@ -479,7 +479,7 @@ AUDIO_CORE_RAM void playerEngine::handleNoteOnPanning()
 
 void playerEngine::handleNoteOnBitCrusher()
 {
-    modBitDepth(mtProject.instrument[currentInstrument_idx].bitDepth);
+    modBitDepth(SampleInstrumentFx::bitDepth(currentInstrument_idx));
 }
 
 AUDIO_CORE_RAM void playerEngine::handleNoteOnDelaySend()
@@ -678,7 +678,7 @@ AUDIO_CORE_RAM void playerEngine::handleInitFxNoteOnAllEnvelopes()
 
     handleInitFxNoteOnEnvelope(envAmp);
 
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (SampleInstrumentFx::filterEnable(currentInstrument_idx))
     {
         handleInitFxNoteOnEnvelope(envCutoff);
     }
@@ -701,11 +701,11 @@ AUDIO_CORE_RAM void playerEngine::handleInitFxNoteOnAllEnvelopes()
 AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
 {
     //***** resonance
-    if (mtProject.instrument[currentInstrument_idx].filterEnable)
+    if (SampleInstrumentFx::filterEnable(currentInstrument_idx))
     {
         for (int channel = 0; channel < filterPtr.size(); channel++)
         {
-            filterPtr[channel]->resonance(mtProject.instrument[currentInstrument_idx].resonance +
+            filterPtr[channel]->resonance(SampleInstrumentFx::resonance(currentInstrument_idx) +
                                           RESONANCE_OFFSET);
         }
     }
@@ -727,13 +727,13 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
     }
     else
     {
-        if (mtProject.instrument[currentInstrument_idx].filterEnable)
+        if (SampleInstrumentFx::filterEnable(currentInstrument_idx))
         {
             filterConnect();
             if (!isActiveEnvelope(envCutoff))
-                modCutoff(mtProject.instrument[currentInstrument_idx].cutOff);
+                modCutoff(SampleInstrumentFx::cutOff(currentInstrument_idx));
         }
-        else if (!mtProject.instrument[currentInstrument_idx].filterEnable)
+        else
             filterDisconnect();
     }
     //*****
@@ -751,9 +751,9 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
     }
     else
     {
-        if (mtProject.instrument[currentInstrument_idx].filterEnable)
+        if (SampleInstrumentFx::filterEnable(currentInstrument_idx))
         {
-            changeFilterType(mtProject.instrument[currentInstrument_idx].filterType);
+            changeFilterType(SampleInstrumentFx::filterType(currentInstrument_idx));
         }
     }
     //*****
@@ -771,7 +771,7 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnFilter()
     }
     else
     {
-        modOverdrive(mtProject.instrument[currentInstrument_idx].overdrive);
+        modOverdrive(SampleInstrumentFx::overdrive(currentInstrument_idx));
     }
 }
 
@@ -800,7 +800,7 @@ AUDIO_CORE_RAM void playerEngine::handleFxNoteOnBitDepth()
     }
     else
     {
-        modBitDepth(mtProject.instrument[currentInstrument_idx].bitDepth);
+        modBitDepth(SampleInstrumentFx::bitDepth(currentInstrument_idx));
     }
 }
 

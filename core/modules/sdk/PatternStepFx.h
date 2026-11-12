@@ -1,5 +1,5 @@
-#ifndef MODULES_PATTERNSTEPFX_H_
-#define MODULES_PATTERNSTEPFX_H_
+#ifndef MODULES_SDK_PATTERNSTEPFX_H_
+#define MODULES_SDK_PATTERNSTEPFX_H_
 
 #include <stdint.h>
 
@@ -10,7 +10,6 @@ static constexpr uint8_t kPatternStepFxModuleIdLast = 143;
 static constexpr uint8_t kMaxModulePatternStepFx = 16;
 static constexpr uint8_t kPatternStepFxNameMax = 28;
 
-// Descriptor exported by a FeatureModule for the pattern FX picker + playback.
 struct PatternStepFxInfo
 {
     uint8_t typeId; // stored in pattern; must be in [128,143], unique across modules
@@ -23,4 +22,4 @@ struct PatternStepFxInfo
     uint8_t defaultValue;
 };
 
-#endif /* MODULES_PATTERNSTEPFX_H_ */
+#endif /* MODULES_SDK_PATTERNSTEPFX_H_ */

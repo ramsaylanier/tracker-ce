@@ -339,6 +339,8 @@ void cInstrumentEditor::initDisplayControls()
     prop2.h = 394;
     blankSpaceCover[0] = display.createControl<cLabel>(&prop2);
     blankSpaceCover[1] = display.createControl<cLabel>(&prop2);
+
+    moduleListPage.createListControl();
 }
 
 void cInstrumentEditor::showTitleBar()
@@ -677,7 +679,7 @@ void cInstrumentEditor::showEffectScreen()
 {
     showTitleBar();
     showSendScreenFrame();
-    frameData.placesCount = 4;
+    frameData.placesCount = 8;
 
     for (uint8_t i = 0; i < 8; i++)
     {
@@ -720,12 +722,10 @@ void cInstrumentEditor::showEffectScreen()
     display.setControlText(label[3], "Delay send");
     display.setControlText(label[4], "Instrument");
     display.setControlText2(label[4], "MIDI Mapping");
-
-    for (uint8_t i = 5; i < 7; i++)
-    {
-        display.setControlText(label[i], "");
-        display.setControlText2(label[i], "");
-    }
+    display.setControlText(label[5], "");
+    display.setControlText2(label[5], "");
+    display.setControlText(label[6], "");
+    display.setControlText2(label[6], "");
     display.setControlText(label[7], "Back");
     display.setControlText2(label[7], "");
 
@@ -760,6 +760,7 @@ void cInstrumentEditor::showEffectScreen()
     display.setControlStyle2(label[4],
                              controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
     display.setControlColors(label[4], display.getTheme().activeButtonLabelsColors);
+    display.setControlColors(label[6], display.getTheme().activeButtonLabelsColors);
 
     display.setControlValue(bgLabel, 255); // 0b10111111
     display.setControlShow(bgLabel);
@@ -769,19 +770,74 @@ void cInstrumentEditor::showEffectScreen()
     display.setControlHide(paramsListControl);
     display.setControlHide(modelListControl);
     display.setControlHide(imgGridControl);
+    display.setControlHide(blankSpaceCover[0]);
+    moduleListPage.hideList();
 
-    display.setControlPosition(blankSpaceCover[0], (800 / 8) * 4 + 1, -1);
-    display.setControlSize(blankSpaceCover[0], (800 / 8) * 4 - 3, 394);
-    display.setControlShow(blankSpaceCover[0]);
-    display.refreshControl(blankSpaceCover[0]);
+    bindInstrumentPageHost();
+    instrumentExtensions().applySoftKeys(BuiltinPage::Instrument::Effects);
+    getInstrumentPageHost().finishSoftKeys();
 
     display.synchronizeRefresh();
 }
 
+void cInstrumentEditor::showModulePageScreen()
+{
+    titleBar->show();
+
+    display.setControlHide(frameControl);
+    display.setControlHide(filterModeListControl);
+    display.setControlHide(instrumentSynthCCListControl);
+    display.setControlHide(instrumentListControl);
+    display.setControlHide(noteLabel);
+    display.setControlHide(paramsListControl);
+    display.setControlHide(modelListControl);
+    display.setControlHide(imgGridControl);
+    display.setControlHide(blankSpaceCover[0]);
+    display.setControlHide(blankSpaceCover[1]);
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        display.setControlHide(barControl[i]);
+        display.setControlStyle2(label[i],
+                                 controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
+        display.setControlValue(label[i], 1);
+        display.setControlShow(label[i]);
+        display.refreshControl(label[i]);
+    }
+
+    display.setControlShow(bgLabel);
+    display.refreshControl(bgLabel);
+
+    moduleListPage.showList();
+
+    display.synchronizeRefresh();
+}
+
+void cInstrumentEditor::hideModulePageScreen()
+{
+    moduleListPage.hideList();
+}
+
+void cInstrumentEditor::setModulePageTitle(const char* title)
+{
+    titleBar->show();
+    titleBar->setTitle(title != nullptr ? title : "");
+}
+
 void cInstrumentEditor::showSendScreenFrame()
 {
-    if (selectedPlaceSends > 3)
+    if (isEffectsWindow)
+    {
+        // Place 4 is Instrument MIDI Mapping (not a send param)
+        if (selectedPlaceSends > 6 || selectedPlaceSends == 4)
+            return;
+        if (selectedPlaceSends >= 5)
+            return;
+    }
+    else if (selectedPlaceSends > 3)
+    {
         return;
+    }
 
     display.setControlValue(frameControl, selectedPlaceSends);
     display.setControlShow(frameControl);

@@ -6,9 +6,12 @@
 
 #include "imageViewer/imageViewerDefs.h"
 
+#include "Registrar.h"
+
 #include "polyassert.h"
 
 #include <array>
+#include <new>
 
 #ifdef TRACKER_MINI
 #include "core/interface.h"
@@ -19,18 +22,21 @@
 
 #ifdef TRACKER_MINI
 // Project, General, MIDI, Metronome, Firmware, Fn buttons, Info (no USB on Mini)
-constexpr uint8_t baseMenuGroupCount = 7;
+constexpr uint8_t baseMenuGroupCountFixed = 7;
 constexpr uint8_t projectMenuGroupCount = 10;
 constexpr uint8_t generalMenuGroupCount = 9;
 #elif defined(PLATFORM_IMX)
-constexpr uint8_t baseMenuGroupCount = 7;
+constexpr uint8_t baseMenuGroupCountFixed = 7;
 constexpr uint8_t projectMenuGroupCount = 10;
 constexpr uint8_t generalMenuGroupCount = 12;
 #else
-constexpr uint8_t baseMenuGroupCount = 6;
+constexpr uint8_t baseMenuGroupCountFixed = 6;
 constexpr uint8_t projectMenuGroupCount = 10;
 constexpr uint8_t generalMenuGroupCount = 12;
 #endif
+
+// +1 slot for Modules (omitted from visible base count until ConfigItems register).
+constexpr uint8_t baseMenuGroupCount = baseMenuGroupCountFixed + 1;
 
 // baza baz
 cMenuGroup menuBase(menuBase, 0, baseMenuGroupCount);
@@ -58,6 +64,9 @@ cMenuGroup menuFunctionButtons(menuBase, "Fn buttons binding", 8);
 #endif
 
 cMenuGroup menuCredits(menuBase, "Info", 4);
+
+// Modules (last base child so it can be omitted when configItemCount == 0)
+cMenuGroup menuModules(menuBase, "Modules", kMaxConfigItems);
 
 // elementy/////////
 
@@ -399,6 +408,163 @@ cMenuItem melFunctionButtons8(menuFunctionButtons,
                               &setupFunctionKeys8);
 
 #endif
+
+//==================================================================================================================================================================
+// Modules (SDK ConfigItem pool — configured by rebuildModulesConfigMenu after registerExtensions)
+
+namespace
+{
+strItemTypeListTextWithAction moduleListSetups[kMaxConfigItems] = {};
+strItemTypeValue8 moduleValueSetups[kMaxConfigItems] = {};
+strItemTypeActionButton moduleActionSetups[kMaxConfigItems] = {};
+
+alignas(cMenuItem) uint8_t moduleItemStorage[kMaxConfigItems][sizeof(cMenuItem)];
+cMenuItem* moduleMenuItems[kMaxConfigItems] = {};
+bool moduleMenuItemsBuilt = false;
+
+#define MODULE_CONFIG_TRAMPOLINE(N)                                                                \
+    void moduleConfigOnChange##N()                                                                 \
+    {                                                                                              \
+        if (ConfigItem* item = extensionCatalog().configItemAt(N))                                 \
+        {                                                                                          \
+            item->onChange();                                                                      \
+        }                                                                                          \
+    }                                                                                              \
+    void moduleConfigOnAction##N()                                                                 \
+    {                                                                                              \
+        if (ConfigItem* item = extensionCatalog().configItemAt(N))                                 \
+        {                                                                                          \
+            item->onAction();                                                                      \
+        }                                                                                          \
+    }
+
+MODULE_CONFIG_TRAMPOLINE(0)
+MODULE_CONFIG_TRAMPOLINE(1)
+MODULE_CONFIG_TRAMPOLINE(2)
+MODULE_CONFIG_TRAMPOLINE(3)
+MODULE_CONFIG_TRAMPOLINE(4)
+MODULE_CONFIG_TRAMPOLINE(5)
+MODULE_CONFIG_TRAMPOLINE(6)
+MODULE_CONFIG_TRAMPOLINE(7)
+MODULE_CONFIG_TRAMPOLINE(8)
+MODULE_CONFIG_TRAMPOLINE(9)
+MODULE_CONFIG_TRAMPOLINE(10)
+MODULE_CONFIG_TRAMPOLINE(11)
+MODULE_CONFIG_TRAMPOLINE(12)
+MODULE_CONFIG_TRAMPOLINE(13)
+MODULE_CONFIG_TRAMPOLINE(14)
+MODULE_CONFIG_TRAMPOLINE(15)
+
+#undef MODULE_CONFIG_TRAMPOLINE
+
+using ModuleConfigFn = void (*)();
+
+const ModuleConfigFn kModuleOnChange[kMaxConfigItems] = {
+    moduleConfigOnChange0,  moduleConfigOnChange1,  moduleConfigOnChange2,  moduleConfigOnChange3,
+    moduleConfigOnChange4,  moduleConfigOnChange5,  moduleConfigOnChange6,  moduleConfigOnChange7,
+    moduleConfigOnChange8,  moduleConfigOnChange9,  moduleConfigOnChange10, moduleConfigOnChange11,
+    moduleConfigOnChange12, moduleConfigOnChange13, moduleConfigOnChange14, moduleConfigOnChange15,
+};
+
+const ModuleConfigFn kModuleOnAction[kMaxConfigItems] = {
+    moduleConfigOnAction0,  moduleConfigOnAction1,  moduleConfigOnAction2,  moduleConfigOnAction3,
+    moduleConfigOnAction4,  moduleConfigOnAction5,  moduleConfigOnAction6,  moduleConfigOnAction7,
+    moduleConfigOnAction8,  moduleConfigOnAction9,  moduleConfigOnAction10, moduleConfigOnAction11,
+    moduleConfigOnAction12, moduleConfigOnAction13, moduleConfigOnAction14, moduleConfigOnAction15,
+};
+
+struct ModulesMenuStaticInit
+{
+    ModulesMenuStaticInit()
+    {
+        // Hide Modules until FeatureModuleRegistry::initAll / rebuildModulesConfigMenu.
+        menuModules.setChildCount(0);
+        menuBase.setChildCount(baseMenuGroupCountFixed);
+    }
+} modulesMenuStaticInit;
+} // namespace
+
+void rebuildModulesConfigMenu()
+{
+    if (!moduleMenuItemsBuilt)
+    {
+        for (uint8_t i = 0; i < kMaxConfigItems; i++)
+        {
+            moduleMenuItems[i] = new (moduleItemStorage[i])
+              cMenuItem(menuModules, "", nullptr, menuItemTypeEmpty, nullptr);
+        }
+        moduleMenuItemsBuilt = true;
+    }
+
+    const uint8_t count = extensionCatalog().configItemCount();
+    const uint8_t n = count > kMaxConfigItems ? kMaxConfigItems : count;
+
+    for (uint8_t i = 0; i < n; i++)
+    {
+        ConfigItem* item = extensionCatalog().configItemAt(i);
+        if (item == nullptr)
+        {
+            moduleMenuItems[i]->reconfigure("", nullptr, menuItemTypeEmpty, nullptr);
+            continue;
+        }
+
+        const char* name = item->name() != nullptr ? item->name() : "";
+        const char* desc = item->description();
+
+        switch (item->type())
+        {
+            case ConfigItemType::ListText:
+            {
+                moduleListSetups[i].value = item->valuePtr();
+                moduleListSetups[i].count = item->listCount();
+                moduleListSetups[i].ptrText = item->listTexts();
+                moduleListSetups[i].funct1 = kModuleOnChange[i];
+                moduleMenuItems[i]->reconfigure(
+                  name, desc, menuTypeItemListTextWithAction, &moduleListSetups[i]);
+                break;
+            }
+            case ConfigItemType::ValueU8:
+            {
+                moduleValueSetups[i].value = item->valuePtr();
+                moduleValueSetups[i].min = item->minValue();
+                moduleValueSetups[i].max = item->maxValue();
+                moduleValueSetups[i].interval = 1;
+                moduleValueSetups[i].dev = 0;
+                moduleValueSetups[i].funct1 = kModuleOnChange[i];
+                moduleMenuItems[i]->reconfigure(
+                  name, desc, menuItemTypeValueU8, &moduleValueSetups[i]);
+                break;
+            }
+            case ConfigItemType::Action:
+            {
+                moduleActionSetups[i].funct1 = kModuleOnAction[i];
+                moduleActionSetups[i].funct2 = nullptr;
+                moduleMenuItems[i]->reconfigure(
+                  name, desc, menuTypeItemActionButton, &moduleActionSetups[i]);
+                break;
+            }
+            default:
+                moduleMenuItems[i]->reconfigure(name, desc, menuItemTypeEmpty, nullptr);
+                break;
+        }
+    }
+
+    for (uint8_t i = n; i < kMaxConfigItems; i++)
+    {
+        moduleMenuItems[i]->reconfigure("", nullptr, menuItemTypeEmpty, nullptr);
+    }
+
+    menuModules.setChildCount(n);
+
+    if (n == 0)
+    {
+        menuBase.setChildCount(baseMenuGroupCountFixed);
+    }
+    else
+    {
+        menuBase.setChildCount(baseMenuGroupCount);
+    }
+}
 
 // clang-format on
 
@@ -779,7 +945,15 @@ void cConfigEditor::configListConfirm(uint8_t list_pos)
     {
         case menuItemTypeValueU8:
         {
-
+            strItemTypeValue8* temp_str = (strItemTypeValue8*)selected_child->getItemSetup();
+            if (temp_str->value != nullptr && list_pos <= temp_str->max - temp_str->min)
+            {
+                *(temp_str->value) = temp_str->min + list_pos;
+            }
+            if (temp_str->funct1 != nullptr)
+            {
+                temp_str->funct1();
+            }
             break;
         }
         case menuTypeItemListValues:

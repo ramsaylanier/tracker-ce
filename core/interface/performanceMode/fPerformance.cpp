@@ -9,7 +9,6 @@
 
 #include "performanceMode.h"
 
-#include "FeatureModuleRegistry.h"
 #include "Platform.h"
 #include "performanceEngine.h"
 #include "util_math.h"
@@ -746,13 +745,18 @@ static void functSwitchTracksPage()
 
 static void functPerformancePageButton(uint8_t button, uint8_t state)
 {
-    PerformancePage* page = PM->getActivePerformancePage();
+    ModulePage* page = PM->getActivePerformancePage();
     if (page == nullptr)
     {
         return;
     }
 
-    page->onScreenButton(getPerformancePageHost(), button, state);
+    InputEvent event;
+    event.kind = InputKind::SoftKey;
+    event.index = button;
+    event.state = static_cast<SoftKeyButtonState>(state);
+    event.shift = PM->buttons->isButtonPressed(interfaceButtonShift);
+    page->onInput(getPerformancePageHost(), event);
 }
 
 //##############################################################################################

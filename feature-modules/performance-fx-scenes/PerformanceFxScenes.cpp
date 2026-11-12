@@ -100,7 +100,7 @@ void PerformanceFxScenes::setActiveSlot(uint8_t idx)
     activeSlot = (idx < kPerfScenesCount) ? idx : 0xFF;
 }
 
-void PerformanceFxScenes::refreshPage(PerformancePageHost& host)
+void PerformanceFxScenes::refreshPage(PageHost& host)
 {
     static const char* const sceneSlotLabels[kPerfScenesCount] = {
         "1", "2", "3", "4", "5", "6", "7", "8"
@@ -111,27 +111,27 @@ void PerformanceFxScenes::refreshPage(PerformancePageHost& host)
         // TitleBar stores a pointer — keep this buffer stable.
         static char titleBuf[24];
         snprintf(titleBuf, sizeof(titleBuf), "Scenes - %u", static_cast<unsigned>(activeSlot + 1));
-        host.setPageTitle(titleBuf);
+        host.setTitle(titleBuf);
     }
     else
     {
-        host.setPageTitle(title());
+        host.setTitle(title());
     }
 
     for (uint8_t i = 0; i < kPerfScenesCount; i++)
     {
-        PerformanceLabelState state = PerformanceLabelState::Empty;
+        LabelState state = LabelState::Empty;
         if (i == activeSlot)
         {
-            state = PerformanceLabelState::Active;
+            state = LabelState::Active;
         }
         else if (isFilled(i))
         {
-            state = PerformanceLabelState::Filled;
+            state = LabelState::Filled;
         }
-        host.setScreenLabel(i, sceneSlotLabels[i], state);
+        host.setSoftKey(i, sceneSlotLabels[i], state);
     }
-    host.finishScreenLabels();
+    host.finishSoftKeys();
 }
 
 bool PerformanceFxScenes::validateHeader() const
@@ -205,7 +205,7 @@ bool PerformanceFxScenes::isFilled(uint8_t idx) const
     return externalRamPerfScenesBank.scenes[idx].name[0] != '\0';
 }
 
-void PerformanceFxScenes::storeScene(PerformancePageHost& host, uint8_t idx, const char* name)
+void PerformanceFxScenes::storeScene(uint8_t idx, const char* name)
 {
     if (idx >= kPerfScenesCount)
     {
@@ -213,7 +213,7 @@ void PerformanceFxScenes::storeScene(PerformancePageHost& host, uint8_t idx, con
     }
 
     strPerfScene& scene = externalRamPerfScenesBank.scenes[idx];
-    host.captureFxScene(scene);
+    getPerformanceService().captureFxScene(scene);
 
     memset(scene.name, 0, sizeof(scene.name));
     if (name != nullptr)
@@ -224,45 +224,50 @@ void PerformanceFxScenes::storeScene(PerformancePageHost& host, uint8_t idx, con
     saveToWorkspace();
 }
 
-bool PerformanceFxScenes::recallScene(PerformancePageHost& host, uint8_t idx)
+bool PerformanceFxScenes::recallScene(uint8_t idx)
 {
     if (idx >= kPerfScenesCount || !isFilled(idx))
     {
         return false;
     }
 
-    host.recallFxScene(externalRamPerfScenesBank.scenes[idx]);
+    getPerformanceService().recallFxScene(externalRamPerfScenesBank.scenes[idx]);
     setActiveSlot(idx);
     return true;
 }
 
-void PerformanceFxScenes::onShow(PerformancePageHost& host)
+void PerformanceFxScenes::onShow(PageHost& host)
 {
     refreshPage(host);
 }
 
-void PerformanceFxScenes::onHide(PerformancePageHost& host)
+void PerformanceFxScenes::onHide(PageHost& host)
 {
     (void)host;
 }
 
-void PerformanceFxScenes::onScreenButton(PerformancePageHost& host, uint8_t button, uint8_t state)
+void PerformanceFxScenes::onInput(PageHost& host, const InputEvent& event)
 {
-    if (state != kPerformanceButtonPress || button >= kPerfScenesCount)
+    if (event.kind != InputKind::SoftKey)
     {
         return;
     }
 
-    if (host.isShiftPressed())
+    if (event.state != SoftKeyButtonState::Press || event.index >= kPerfScenesCount)
+    {
+        return;
+    }
+
+    if (event.shift || host.isShiftPressed())
     {
         char name[kPerfFxSceneNameLength];
-        snprintf(name, sizeof(name), "Scene %d", button + 1);
-        storeScene(host, button, name);
+        snprintf(name, sizeof(name), "Scene %d", event.index + 1);
+        storeScene(event.index, name);
         refreshPage(host);
     }
-    else if (recallScene(host, button))
+    else if (recallScene(event.index))
     {
-        host.refreshFxRack();
+        getPerformanceService().refreshFxRack();
         refreshPage(host);
     }
 }

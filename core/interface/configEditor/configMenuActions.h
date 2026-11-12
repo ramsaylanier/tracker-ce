@@ -43,4 +43,7 @@ void resetConfigShowPopup();
 void usbStorageEnter();
 void usbAudioChange();
 
+// Rebuild Config → Modules from ExtensionCatalog ConfigItem registrations.
+void rebuildModulesConfigMenu();
+
 #endif /* INTERFACE_CONFIGEDITOR_CONFIGMENUACTIONS_H_ */

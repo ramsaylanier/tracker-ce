@@ -5,7 +5,7 @@ Independent banks of Performance-engine FX type + value pairs. Edited from the *
 | | |
 | :--- | :--- |
 | Song column | **FX** (`-` / `1`–`8`) |
-| Editor | `SongModePage` (Mini menu dots: playlist / FX; Song host only dispatches) |
+| Editor | `ModulePage` on Song (Mini menu dots: playlist / FX) |
 | Sidecar | `songfxscenes.bin` |
 | Pattern Step FX | `N` / **FX Scene** (values 1–8) |
 | Performance page | none |
@@ -29,11 +29,11 @@ A row with FX `-` still clears leftover FX from the previous scene. A row start 
 3. Focus the **FX** column (between pattern list and tempo) with Left/Right.
 4. Encoder sets `-` or scene `1`–`8` for the selected row.
 
-The FX column is only selectable (red frame) while Rec is on. It is hidden on the Song FX mode page.
+The FX column is only selectable (red frame) while Rec is on. It is hidden on the Song FX module page.
 
 ### Edit a scene’s FX list
 
-1. From the Mini Song menu, select the second mode page (FX). Insert also opens the page.
+1. From the Mini Song menu, select the second module page (FX). Insert also opens the page.
 2. Soft buttons **1–8** select which scene bank you are editing (active bank highlighted).
 3. The main list shows FX name + value rows for that scene:
    - **Up** / **Down**: move focus between rows
