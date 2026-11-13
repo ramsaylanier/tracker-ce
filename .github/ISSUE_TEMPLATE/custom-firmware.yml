@@ -27,7 +27,7 @@ body:
     id: modules
     attributes:
       label: Feature Modules
-      description: Space-separated module directory names under `feature-modules/` (leave empty for none). Example — `performance-fx-scenes mute-banks`
-      placeholder: performance-fx-scenes song-fx-scenes pattern-launch-scenes mute-banks
+      description: Space-separated module directory names under `feature-modules/` (leave empty for none). Example — `performance-fx-scenes song-row-mutes`
+      placeholder: performance-fx-scenes song-fx-scenes pattern-launch-scenes song-row-mutes
     validations:
       required: false

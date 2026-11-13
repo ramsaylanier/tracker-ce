@@ -33,9 +33,9 @@
       "order": 20
     },
     {
-      "name": "mute-banks",
-      "title": "Mute Banks",
-      "description": "Store and recall sample and MIDI track mute masks",
+      "name": "song-row-mutes",
+      "title": "Song Row Mutes",
+      "description": "Per-playlist-row track mutes on the Song arrange grid (songrowmutes.bin)",
       "order": 30
     }
   ]

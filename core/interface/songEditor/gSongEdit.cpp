@@ -1,5 +1,6 @@
 #include "songEditor/songEditor.h"
 
+#include "SongRowMuteQuery.h"
 #include "sdk/Registrar.h"
 #include "Platform.h"
 #include "core/modulePageHost.h"
@@ -202,7 +203,17 @@ void cSongEditor::showDefaultScreen()
     display.setControlText(label[1], "Play");
     display.setControlText2(label[1], "Song");
 
-    display.setControlText(label[2], "Undo");
+    if (editMode && selectedPlace == 0 && songPlayerData.selection.isActive &&
+        buttons->isButtonPressed(interfaceButtonShift) && songRowMuteProviderActive())
+    {
+        display.setControlText(label[2], "Mute");
+        display.setControlText2(label[2], "Blocks");
+    }
+    else
+    {
+        display.setControlText(label[2], "Undo");
+        display.setControlText2(label[2], "");
+    }
 
     if (buttons->isButtonPressed(interfaceButtonShift))
     {
@@ -376,6 +387,29 @@ void cSongEditor::refreshButtonsLabels()
             display.refreshControl(label[1]);
             playButtonsState = 5;
         }
+    }
+
+    // Rec + arrange selection + Shift: softkey 2 becomes Mute Blocks.
+    const bool showMute =
+      activeModulePage == nullptr && editMode && selectedPlace == 0 &&
+      songPlayerData.selection.isActive && buttons->isButtonPressed(interfaceButtonShift) &&
+      songRowMuteProviderActive();
+    static uint8_t muteLabelState = 0xFF;
+    const uint8_t nextMuteState = showMute ? 1 : 0;
+    if (muteLabelState != nextMuteState)
+    {
+        muteLabelState = nextMuteState;
+        if (showMute)
+        {
+            display.setControlText(label[2], "Mute");
+            display.setControlText2(label[2], "Blocks");
+        }
+        else
+        {
+            display.setControlText(label[2], "Undo");
+            display.setControlText2(label[2], "");
+        }
+        display.refreshControl(label[2]);
     }
 }
 

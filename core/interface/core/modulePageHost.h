@@ -120,6 +120,10 @@ ScreenExtensionPoint& patternExtensions();
 // Main-thread playlist replace notify (FileManager / Song import).
 void notifySongPlaylistReplaced();
 
+// Main-thread playlist insert/remove (Song editor). Also notifies SongColumn.
+void notifySongInserted(uint8_t index, bool duplicate);
+void notifySongRemoved(uint8_t index);
+
 // Main-thread song playback edge detect → SongColumn::onSlotStart / listeners.
 void notifySongPlaybackTick();
 

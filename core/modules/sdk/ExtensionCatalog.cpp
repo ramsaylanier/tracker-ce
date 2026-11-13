@@ -400,6 +400,30 @@ void ExtensionCatalog::notifySongPlaylistReplaced()
     }
 }
 
+void ExtensionCatalog::notifySongInserted(uint8_t index, bool duplicate)
+{
+    for (uint8_t i = 0; i < listenerCount_; i++)
+    {
+        listeners_[i]->onSongInserted(index, duplicate);
+    }
+    if (SongColumn* col = firstSongColumn())
+    {
+        col->onInserted(index, duplicate);
+    }
+}
+
+void ExtensionCatalog::notifySongRemoved(uint8_t index)
+{
+    for (uint8_t i = 0; i < listenerCount_; i++)
+    {
+        listeners_[i]->onSongRemoved(index);
+    }
+    if (SongColumn* col = firstSongColumn())
+    {
+        col->onRemoved(index);
+    }
+}
+
 void ExtensionCatalog::notifyPatternLoad(uint16_t patternIdx)
 {
     for (uint8_t i = 0; i < listenerCount_; i++)
