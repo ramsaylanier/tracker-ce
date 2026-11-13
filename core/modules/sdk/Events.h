@@ -11,6 +11,13 @@ class ModuleEventListener
 
     virtual void onSongSlotStart(uint8_t slot) { (void)slot; }
     virtual void onSongPlaylistReplaced() {}
+    // Playlist row inserted after `index` (duplicate copies row `index`).
+    virtual void onSongInserted(uint8_t index, bool duplicate)
+    {
+        (void)index;
+        (void)duplicate;
+    }
+    virtual void onSongRemoved(uint8_t index) { (void)index; }
     virtual void onPatternLoad(uint16_t patternIdx) { (void)patternIdx; }
     virtual void onPatternSave(uint16_t patternIdx) { (void)patternIdx; }
 };

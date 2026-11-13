@@ -15,6 +15,7 @@ ALLOWED_EXACT = {
     "FeatureModule.h",
     "ModuleSidecar.h",
     "SampleInstrumentFxQuery.h",
+    "SongRowMuteQuery.h",
     "Platform.h",
     "cr_section_macros.h",
     "polyassert.h",

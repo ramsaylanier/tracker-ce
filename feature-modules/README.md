@@ -11,7 +11,7 @@ See [`docs/feature_module_sdk.md`](../docs/feature_module_sdk.md).
 | [`performance-fx-scenes/`](performance-fx-scenes/) | Performance page **Scenes** | 10 |
 | [`song-fx-scenes/`](song-fx-scenes/) | Song FX column + page + Step FX `N` | 15 |
 | [`pattern-launch-scenes/`](pattern-launch-scenes/) | Performance page **Patterns** | 20 |
-| [`mute-banks/`](mute-banks/) | Performance page **Mutes** | 30 |
+| [`song-row-mutes/`](song-row-mutes/) | Song arrange per-row track mutes | 30 |
 | [`fx-buses/`](fx-buses/) | Master + Instrument FX Buses pages + softkeys | 40 |
 | [`_example/`](_example/) | SDK hook demo (Performance + Pattern pages; not built by default) | 90 |
 
@@ -43,4 +43,4 @@ Master / Song / Instrument / Pattern share `ModuleListPageSupport` for title, li
 python3 scripts/check_module_includes.py
 ```
 
-Modules may only include SDK headers (`FeatureModule.h`, `sdk/*`), `ModuleSidecar.h`, `SampleInstrumentFxQuery.h`, `Platform.h`, `cr_section_macros.h`, and standard C/C++ headers.
+Modules may only include SDK headers (`FeatureModule.h`, `sdk/*`), `ModuleSidecar.h`, `SampleInstrumentFxQuery.h`, `SongRowMuteQuery.h`, `Platform.h`, `cr_section_macros.h`, and standard C/C++ headers.

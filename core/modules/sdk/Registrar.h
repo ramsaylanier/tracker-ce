@@ -112,6 +112,8 @@ class ExtensionCatalog
 
     void notifySongSlotStart(uint8_t slot);
     void notifySongPlaylistReplaced();
+    void notifySongInserted(uint8_t index, bool duplicate);
+    void notifySongRemoved(uint8_t index);
     void notifyPatternLoad(uint16_t patternIdx);
     void notifyPatternSave(uint16_t patternIdx);
 

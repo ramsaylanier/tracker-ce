@@ -306,6 +306,16 @@ void notifySongPlaylistReplaced()
     extensionCatalog().notifySongPlaylistReplaced();
 }
 
+void notifySongInserted(uint8_t index, bool duplicate)
+{
+    extensionCatalog().notifySongInserted(index, duplicate);
+}
+
+void notifySongRemoved(uint8_t index)
+{
+    extensionCatalog().notifySongRemoved(index);
+}
+
 void notifySongPlaybackTick()
 {
     static bool wasPlayingSong = false;

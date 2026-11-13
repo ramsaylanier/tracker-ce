@@ -8,6 +8,7 @@
 #include "performanceMode/performanceMode.h"
 
 #include "sdk/Registrar.h"
+#include "SongRowMuteQuery.h"
 #include "core/modulePageHost.h"
 #include "Platform.h"
 #include "mtPadBoard.h"
@@ -675,10 +676,7 @@ static void functAddSlot()
     mtProject.song.playlist[SE->selectedSongPosition + 1] =
       duplicateSlot ? mtProject.song.playlist[SE->selectedSongPosition] : firstEmptyPatternIdx;
 
-    if (SongColumn* column = extensionCatalog().firstSongColumn())
-    {
-        column->onInserted(SE->selectedSongPosition, duplicateSlot);
-    }
+    notifySongInserted(SE->selectedSongPosition, duplicateSlot);
 
     SE->songLength++;
 
@@ -722,10 +720,7 @@ static void functDeleteSlot()
         mtProject.song.playlist[i] = mtProject.song.playlist[i + 1];
     }
 
-    if (SongColumn* column = extensionCatalog().firstSongColumn())
-    {
-        column->onRemoved(SE->selectedSongPosition);
-    }
+    notifySongRemoved(SE->selectedSongPosition);
 
     SE->songLength--;
 
@@ -1903,12 +1898,48 @@ static void functPaste()
     }
 }
 
+static bool canToggleSongRowMute()
+{
+    return SE->editMode && SE->selectedPlace == 0 && SE->songPlayerData.selection.isActive &&
+           songRowMuteProviderActive();
+}
+
+static void functToggleSongRowMute()
+{
+    if (SE->isBusy || !canToggleSongRowMute())
+    {
+        return;
+    }
+
+    const song_selection_t& sel = SE->songPlayerData.selection;
+    if (sel.patternSelectionLength == 0 || sel.trackSelectionLength == 0)
+    {
+        return;
+    }
+
+    if (SongRowMute::toggleSelection(sel.startSongPosition,
+                                     sel.patternSelectionLength,
+                                     sel.startTrack,
+                                     sel.trackSelectionLength))
+    {
+        SE->refreshSongPlayerControl();
+    }
+}
+
 static void functUndo()
 {
     if (SE->isBusy)
     {
         return;
     }
+
+    // Rec + arrange selection + Shift: Mute selected blocks for those song rows.
+    if (SE->buttons->isButtonPressed(interfaceButtonShift) && canToggleSongRowMute())
+    {
+        functToggleSongRowMute();
+        return;
+    }
+
     if (!SE->editMode)
     {
         return;

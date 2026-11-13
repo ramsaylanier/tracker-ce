@@ -1,4 +1,5 @@
 #include "FT812.h"
+#include "SongRowMuteQuery.h"
 #include "display.h"
 #include "displayControls.h"
 #include "songPlayerControl.h"
@@ -854,9 +855,21 @@ void cSongPlayer::fillBlocks()
             }
             else
             {
-                if (track < controlData->normalTracksCount
-                      ? controlData->normalTracksMute[track]
-                      : controlData->midiTracksMute[track - controlData->normalTracksCount])
+                const uint8_t songSlot =
+                  static_cast<uint8_t>(textListPos + pattern);
+                bool muted = false;
+                if (songRowMuteProviderActive())
+                {
+                    muted = SongRowMute::isMuted(songSlot, static_cast<uint8_t>(track));
+                }
+                else if (track < controlData->normalTracksCount
+                           ? controlData->normalTracksMute[track]
+                           : controlData->midiTracksMute[track - controlData->normalTracksCount])
+                {
+                    muted = true;
+                }
+
+                if (muted)
                 {
                     API_COLOR(colors[7]);
                 }

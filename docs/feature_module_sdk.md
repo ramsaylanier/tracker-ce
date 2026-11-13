@@ -27,6 +27,7 @@ There is **no SD-card code loader** for feature modules (use `.ptfx` for Sample 
 | **Lifecycle events** | `addEventListener(ModuleEventListener*)` |
 | **Project sidecar** | `ModuleSidecar` + open/save/clear hooks |
 | **Sample FX query** | `setSampleInstrumentFxProvider` from `init` |
+| **Song row mute query** | `setSongRowMuteProvider` from `init` (arrange greying + Rec mute) |
 
 **Boundary rule:** change core only to grow the **host/dispatcher** surface. Product behavior stays in the module directory.
 
@@ -148,8 +149,9 @@ Pattern module pages via `addPage(ScreenId::Pattern, …)` are supported (see `_
 
 - **SongColumn / PatternColumn** — capacity is **1** each (`kMaxSongColumns` / `kMaxPatternColumns`). A second registration fails; only the first is shown (**first-wins**). Song cells ≤ 4 chars; Pattern optional field after FX2 (`selectedParam == 4`).
 - **Pattern Step FX** — type ids `128..143`; handler is a function pointer. It is called from the sequencer tick inside the audio buffer callback, not the main loop, so keep it short and do not do file I/O or draw from it.
-- **ConfigItem** / **ModuleEventListener** — wired and used by `_example`; optional for production modules.
+- **ConfigItem** / **ModuleEventListener** — song slot start, playlist replace/insert/remove, pattern load/save. Used by production modules and `_example`.
 - **Services** — `getPerformanceService()` (scenes / FX rack / mute queries), `getSongService()` (`selectedSlot`), `getEngineService()` (instrument FX fields + `notifyInstrumentFxDirty`).
+- **Song row mutes** — `SongRowMuteQuery.h` provider for per-playlist-slot mute greying and Rec Shift+Mute on the arrange grid.
 - **`replacePage`** — **Master-only**. Song / Pattern accept `addPage` and soft keys / columns, but do not replace their builtin views.
 
 ---
@@ -160,7 +162,7 @@ Pattern module pages via `addPage(ScreenId::Pattern, …)` are supported (see `_
 | :--- | :--- |
 | `performance-fx-scenes/` | Performance page **Scenes** |
 | `pattern-launch-scenes/` | Performance page **Patterns** |
-| `mute-banks/` | Performance page **Mutes** |
+| `song-row-mutes/` | Song arrange per-row track mutes (`songrowmutes.bin`) |
 | `song-fx-scenes/` | Song column + Song page + Step FX `N` |
 | `fx-buses/` | Master + Instrument editor pages (separate UI state) + Instrument Effects softkeys + sample FX provider |
 | `_example/` | Hook demo: Performance page, Pattern page, softkey, Config, events (not built by default) |
@@ -170,7 +172,7 @@ Pattern module pages via `addPage(ScreenId::Pattern, …)` are supported (see `_
 ## 8. Out of scope
 
 - SD-card executable feature modules
-- Audio-callback / ISR module hooks beyond `SampleInstrumentFxQuery`
+- Audio-callback / ISR module hooks beyond `SampleInstrumentFxQuery` / song-row mute apply (main thread)
 - Multi-column cycling (hosts keep first-wins only)
 - Song / Pattern `replacePage` hosts
 - New top-level `ModuleBase` screens (slot 11 remains reserved)
