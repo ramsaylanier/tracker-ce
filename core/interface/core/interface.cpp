@@ -31,6 +31,7 @@
 #include "Platform.h"
 #include "VoiceStreamManager.h"
 #include "config.h"
+#include "cr_section_macros.h"
 #include "log.h"
 #include "mtHardware.h"
 #include "mtSleep.h"
@@ -42,7 +43,8 @@ Interface mtInterface;
 
 strMtConfig mtConfig;
 OCRAM_BSS_SECTION strMtProject mtProject;
-InterfaceGlobals interfaceGlobals;
+// Runtime FX catalog (~5KB) lives here for module step-FX exports; keep out of SRAM_DTC.
+__NOINIT(EXTERNAL_RAM) InterfaceGlobals interfaceGlobals;
 strGrid mtGrid;
 
 extern void unmuteAudioOutByKey();
