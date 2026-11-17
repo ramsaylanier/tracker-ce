@@ -332,7 +332,9 @@ SECTIONS
     } > QSPI_FLASH
 
     /* Reserve and place Heap within memory map */
-    _HeapSize = 0x21E00;
+    /* Was 0x21E00 (~135.5 KB). Trimmed 12 KB so Mini still links with feature-module
+       FX catalogs / SDK overhead in SRAM_DTC without stuffing EXTERNAL_RAM. */
+    _HeapSize = 0x1EE00;
     .heap :  ALIGN(4)
     {
         _pvHeapStart = .;
