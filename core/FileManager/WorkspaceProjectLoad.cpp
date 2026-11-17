@@ -169,6 +169,13 @@ void WorkspaceProjectLoad::loadProjectFromWorkspaceFinish()
     featureModules.onWorkspaceLoad();
 
 #if FILEMANAGER_HANDLE_SYNTH == 1
+    // updateToSettings() hands the voice count from the project file to the synth as it is,
+    // and loadProjectValues() below validates the synth settings only after that.
+    for (int part = 0; part < kSynthParts; part++)
+    {
+        newFileManager.getSynth()->validateSynthPartSettings(part,
+                                                             mtProject.values.synthPart[part]);
+    }
     newFileManager.getSynth()->updateToSettings(mtProject.values, true);
     for (int part = 0; part < kSynthParts; part++)
     {

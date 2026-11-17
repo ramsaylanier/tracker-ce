@@ -89,7 +89,8 @@ void cSamplePlayback::update()
 {
     refreshLiveParams();
 
-    if (refreshSpectrum)
+    // A MIDI or synth instrument has no waveform; the request waits for a sample instrument.
+    if (refreshSpectrum && mtProject.values.lastUsedInstrument < kSampleInstrumentsCount)
     {
         strSampleMemory* editorSampleMemory =
           &mtProject.sampleMemory[mtProject.values.lastUsedInstrument];
@@ -139,6 +140,12 @@ void cSamplePlayback::update()
             mtProject.sampleMemory[mtProject.values.lastUsedInstrument].isStreamed)
         {
             voiceStreamManager.refreshInstrumentSliceCache(mtProject.values.lastUsedInstrument);
+        }
+        // The selection could still be moved among the old slices while detection ran.
+        if (editorInstrument->selectedSlice >= editorInstrument->sliceNumber)
+        {
+            editorInstrument->selectedSlice =
+              (editorInstrument->sliceNumber > 0) ? editorInstrument->sliceNumber - 1 : 0;
         }
         refreshSlicePoints = 1;
         if (!sliceScreenMode2)
@@ -650,7 +657,8 @@ static void functMiniMiddle(uint8_t state)
     // Hold is set to button function with Press state . We have to handle it by rejecting
     // repetitive states if we don't want hold.
 
-    if (mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice)
+    if (mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
+        mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice)
     {
         int note = mtProject.instrument[mtProject.values.lastUsedInstrument].selectedSlice +
                    FIRST_BEAT_SLICE_NOTE;
@@ -676,6 +684,7 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
     (void)velo;
 
     bool isBeatSlice =
+      mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
       mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice;
 
     if (state == buttonPress)
@@ -1838,6 +1847,12 @@ static void changePlayModeSelection(int16_t value)
         //*******************************wavetable window size moze byc tylko potęgą 2
         // Jezeli length nie jest potega 2 trzeba go zrownac do najwiekszej mozliwej potegi 2
         uint16_t localMask = 2048;
+        // A size above the largest window, as a damaged or foreign instrument file can
+        // hold, may have no bit that the mask reaches, and the loop below would not end.
+        if (SP->editorInstrument->sample.wavetable_window_size > localMask)
+        {
+            SP->editorInstrument->sample.wavetable_window_size = localMask;
+        }
         while (!(SP->editorInstrument->sample.wavetable_window_size & localMask))
         {
             if ((SP->editorInstrument->sample.wavetable_window_size == 0))
@@ -3291,7 +3306,6 @@ void cSamplePlayback::onControlChangeReceive(int param, int value)
         editorInstrument = &mtProject.instrument[mtProject.values.lastUsedInstrument];
     }
 
-    editorInstrument = &mtProject.instrument[mtProject.values.lastUsedInstrument];
     changeControlChangeParam((ParamsCC)param, getControlChangeDelta((ParamsCC)param, value));
 }
 
