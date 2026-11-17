@@ -40,10 +40,14 @@ enum class InstrumentTypeId
     kDrumSynth,
     kShapingSynth,
     kChiptuneSynth,
-    kLushSynth,
-    kLastSynth = kLushSynth,
+    kModalSynth,
+    kPDSynth,
+    kGranularSynth,
+    kSampleSynth,
+    kLastSynth = kSampleSynth,
     kDelay = 1000,
     kReverb,
+    kModulationFx,
 };
 
 static constexpr int kMaxNumberOfInstruments = 3;

@@ -1,6 +1,7 @@
 #include "core/interfacePopups.h"
 #include "fileManager.h"
 #include "mtSampleEditorEngine.h"
+#include "ptfx_manager.h"
 #include "sampleEditor.h"
 
 #include <cmath>
@@ -69,7 +70,7 @@ void cSampleEditor::initDisplayControls()
         barProperties.y = 29;
         barProperties.w = 800 / 8 - 4;
         barProperties.style =
-          controlStyleValue_0_100 | controlStyleBackground |
+          controlStyleValue_0_100 | controlStyleBackground | controlStyleFont2 |
           (display.getTheme().barShadow > 0 ? controlStyleGradient : 0) |
           (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0);
         barProperties.h = 394;
@@ -99,10 +100,11 @@ void cSampleEditor::initDisplayControls()
     }
 
     // list
-    effectListData.linesCount = std::min<uint16_t>(editorEffectMax, 14);
+    PtfxManager::initEffectList();
+    effectListData.linesCount = 14;
     effectListData.start = 0;
-    effectListData.length = editorEffectMax;
-    effectListData.data = (char**)effectNamesLabels;
+    effectListData.length = PtfxManager::getTotalEffectListCount();
+    effectListData.data = PtfxManager::getEffectListNames();
 
     strControlProperties effectListProperties;
     effectListProperties.x = (800 / 8) * 6 + 1;
@@ -160,13 +162,40 @@ void cSampleEditor::showMainScreen()
     }
 
     // Labels
-    display.setControlText(label[0], "Start");
-    display.setControlText(label[1], "End");
-    display.setControlText(label[2], "Zoom");
+    if (mainScreenButtonPage == 0)
+    {
+        display.setControlText(label[0], "Start");
+        display.setControlText(label[1], "End");
+        display.setControlText(label[2], "Zoom");
+        showStartPointText();
+        showEndPointText();
+        showZoomText();
+    }
+    else
+    {
+        display.setControlText(label[0], "Load WAV");
+        display.setControlText2(label[0], "");
+        display.setControlValue(label[0], 0);
+        display.setControlText(label[1], "Export WAV");
+        display.setControlText2(label[1], "");
+        display.setControlValue(label[1], 0);
+        display.setControlText(label[2], "");
+        display.setControlText2(label[2], "");
+        display.setControlValue(label[2], 0);
+    }
+
     display.setControlText(label[3], "Undo");
     display.setControlText2(label[3], "");
-    display.setControlText(label[4], "");
+
+    display.setControlText(label[4], "More");
     display.setControlText2(label[4], "");
+    display.setControlData(label[4], &labelDataMore);
+    display.setControlColors(label[4], display.getTheme().moreButtonColors);
+    display.setControlStyle(label[4],
+                            controlStyleCenterX | controlStyleCenterY | controlStyleFont3 |
+                              controlStyleSpecialFx2);
+    labelDataMore.dotIndicator.current = mainScreenButtonPage;
+    labelDataMore.dotIndicator.count = 2;
 
     if (isParametersScreen())
     {
@@ -180,12 +209,28 @@ void cSampleEditor::showMainScreen()
         display.setControlText2(label[5], "effect");
     }
 
-    showStartPointText();
-    showEndPointText();
-    showZoomText();
-
     for (uint8_t i = 0; i < 7; i++)
     {
+        if (i == 4)
+        {
+            continue;
+        }
+        if (mainScreenButtonPage == 1 && i < 3)
+        {
+            if (i == 0 && mtProject.values.lastUsedInstrument < kSampleInstrumentsCount)
+            {
+                display.setControlColors(label[i], display.getTheme().activeButtonLabelsColors);
+            }
+            else if (i == 1 && editorInstrument->isActive && editorInstrument->sample.length > 0)
+            {
+                display.setControlColors(label[i], display.getTheme().activeButtonLabelsColors);
+            }
+            else
+            {
+                display.setControlColors(label[i], display.getTheme().inactiveLabelsColors);
+            }
+            continue;
+        }
         if (editorInstrument->isActive)
         {
             if (i != 5)
@@ -227,7 +272,7 @@ void cSampleEditor::showMainScreen()
 
     for (uint8_t i = 0; i < 6; i++)
     {
-        if (i == 5)
+        if (i == 5 || (mainScreenButtonPage == 1 && i < 2))
         {
             display.setControlStyle2(label[i],
                                      controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
@@ -243,8 +288,6 @@ void cSampleEditor::showMainScreen()
         display.setControlShow(label[i]);
         display.refreshControl(label[i]);
     }
-
-    display.setRemoveControlStyle(label[4], controlStyleSpecialFx2);
 
     display.setControlValue(label[3], 0);
     display.setControlValue(label[6], 0);
@@ -335,7 +378,18 @@ void cSampleEditor::showEffectParamsScreen()
                     display.setControlHide(paramList[i]);
                     display.refreshControl(paramList[i]);
                 }
-                display.setControlValue(bar[i], paramsBarValue[paramIdx]);
+                if (isParameterFile(paramIdx))
+                {
+                    display.setAddControlStyle(bar[i], controlStyleVerticalText | controlStyleFont2);
+                    display.setControlText(bar[i], getParameterFileText(paramIdx));
+                    display.setControlValue(bar[i], 0);
+                }
+                else
+                {
+                    display.setRemoveControlStyle(bar[i], controlStyleVerticalText);
+                    display.setControlText(bar[i], nullptr);
+                    display.setControlValue(bar[i], paramsBarValue[paramIdx]);
+                }
                 display.setControlShow(bar[i]);
                 display.refreshControl(bar[i]);
             }
@@ -352,30 +406,43 @@ void cSampleEditor::showEffectParamsScreen()
         }
     }
     // Labels
-
-    for (uint8_t i = 0; i < kEffectPageParams; i++)
+    if (isModularPresetPage())
     {
-        int paramIdx = i + effectScreenPage * kEffectPageParams;
-
-        if (i < visibleParamsCount)
+        display.setControlText(label[0], "Load Preset");
+        display.setControlText2(label[0], "");
+        display.setControlText(label[1], "Save Preset");
+        display.setControlText2(label[1], "");
+        display.setControlText(label[2], "Reset Params");
+        display.setControlText2(label[2], "");
+        display.setControlText(label[3], "");
+        display.setControlText2(label[3], "");
+    }
+    else
+    {
+        for (uint8_t i = 0; i < kEffectPageParams; i++)
         {
-            display.setControlText(
-              label[i], getCurrentEffectDisplayParams().labelsText[paramIdx]);
-            display.setControlText2(label[i], parameterValueLabelPtr[paramIdx]);
+            int paramIdx = i + effectScreenPage * kEffectPageParams;
 
-            if (parameterValueLabelPtr[paramIdx][0] > 0)
+            if (i < visibleParamsCount)
             {
-                display.setControlValue(label[i], 1);
+                display.setControlText(
+                  label[i], getCurrentEffectDisplayParams().labelsText[paramIdx]);
+                display.setControlText2(label[i], parameterValueLabelPtr[paramIdx]);
+
+                if (parameterValueLabelPtr[paramIdx][0] > 0)
+                {
+                    display.setControlValue(label[i], 1);
+                }
+                else
+                {
+                    display.setControlValue(label[i], 1);
+                }
             }
             else
             {
-                display.setControlValue(label[i], 1);
+                display.setControlText(label[i], "");
+                display.setControlText2(label[i], "");
             }
-        }
-        else
-        {
-            display.setControlText(label[i], "");
-            display.setControlText2(label[i], "");
         }
     }
 
@@ -452,7 +519,15 @@ void cSampleEditor::showEffectParamsScreen()
 
     hidePlayhead();
     // frame
-    showFrame();
+    if (isModularPresetPage())
+    {
+        display.setControlHide(frame);
+        display.refreshControl(frame);
+    }
+    else
+    {
+        showFrame();
+    }
 
     // title label
     showTitleBar(paramsScreenLabel);
@@ -486,17 +561,21 @@ void cSampleEditor::showTitleBar(const char* title)
 
 void cSampleEditor::showStartPointText()
 {
+    if (screenType != mainScreen || mainScreenButtonPage != 0)
+        return;
     display.setControlText2(label[0], startPointText);
     display.refreshControl(label[0]);
 }
 void cSampleEditor::showEndPointText()
 {
+    if (screenType != mainScreen || mainScreenButtonPage != 0)
+        return;
     display.setControlText2(label[1], endPointText);
     display.refreshControl(label[1]);
 }
 void cSampleEditor::showZoomText()
 {
-    if (screenType != mainScreen)
+    if (screenType != mainScreen || mainScreenButtonPage != 0)
         return;
     display.setControlText2(label[2], zoomText);
     display.refreshControl(label[2]);
@@ -603,7 +682,18 @@ void cSampleEditor::showParameterBar(uint8_t n)
     }
     else
     {
-        display.setControlValue(bar[barIdx], paramsBarValue[n]);
+        if (isParameterFile(n))
+        {
+            display.setAddControlStyle(bar[barIdx], controlStyleVerticalText | controlStyleFont2);
+            display.setControlText(bar[barIdx], getParameterFileText(n));
+            display.setControlValue(bar[barIdx], 0);
+        }
+        else
+        {
+            display.setRemoveControlStyle(bar[barIdx], controlStyleVerticalText);
+            display.setControlText(bar[barIdx], nullptr);
+            display.setControlValue(bar[barIdx], paramsBarValue[n]);
+        }
         display.setControlShow(bar[barIdx]);
         display.refreshControl(bar[barIdx]);
     }

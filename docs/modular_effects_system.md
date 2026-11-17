@@ -7,7 +7,7 @@ This guide covers everything needed to use, author, compile, and understand cust
 ## Table of Contents
 
 1. [Overview & Installing `.ptfx` Plugins](#1-overview--installing-ptfx-plugins)
-2. [Bundled Reference Plugins (`editor-fx-sdk/effects/`)](#2-bundled-reference-plugins-editor-fx-sdkeffects)
+2. [Bundled Plugins (`editor-fx-sdk/effects/`)](#2-bundled-plugins-editor-fx-sdkeffects)
 3. [Quick Start & Anatomy of a `.ptfx` Plugin](#3-quick-start--anatomy-of-a-ptfx-plugin)
    - [SDK Contents](#sdk-contents)
    - [Building Plugins](#building-plugins)
@@ -17,6 +17,7 @@ This guide covers everything needed to use, author, compile, and understand cust
    - [Continuous Float Bar (`PTFX_PARAM_FLOAT`)](#1-continuous-float-bar-ptfx_param_float)
    - [Integer Bar (`PTFX_PARAM_INT`)](#2-integer-bar-ptfx_param_int)
    - [Scrollable String List (`PTFX_PARAM_LIST`)](#3-scrollable-string-list-ptfx_param_list)
+   - [File Picker & Save-File Parameters (`PTFX_PARAM_FILE` / `PTFX_PARAM_SAVE_FILE`)](#4-file-picker--save-file-parameters-ptfx_param_file--ptfx_param_save_file)
 6. [Host API Reference (`PtfxHostApi`)](#6-host-api-reference-ptfxhostapi)
 7. [Plugin Lifecycle & Audio Processing Patterns](#7-plugin-lifecycle--audio-processing-patterns)
    - [Lifecycle Order](#71-lifecycle-order)
@@ -24,25 +25,29 @@ This guide covers everything needed to use, author, compile, and understand cust
    - [Pattern B: Extending Sample Length (`host->set_extra_samples`)](#73-pattern-b-extending-sample-length-host-set_extra_samples)
    - [Pattern C: Sample & Wavetable Generators (`PTFX_FLAG_GENERATOR`)](#74-pattern-c-sample--wavetable-generators-ptfx_flag_generator)
    - [Pattern D: Using Working Scratch RAM (`PTFX_SCRATCH`)](#75-pattern-d-using-working-scratch-ram-ptfx_scratch)
+   - [Pattern E: Loading Secondary WAV Audio & Data Files (`PTFX_PARAM_FILE`)](#76-pattern-e-loading-secondary-wav-audio--data-files-ptfx_param_file)
+   - [Pattern F: Exporting / Saving Files (`PTFX_PARAM_SAVE_FILE`)](#77-pattern-f-exporting--saving-files-ptfx_param_save_file)
 8. [The `.ptfx` Binary Specification (`PtfxHeader`)](#8-the-ptfx-binary-specification-ptfxheader)
-   - [Binary Layout (`472` Bytes)](#81-binary-layout-ptfxheader--472-bytes)
+   - [Binary Layout (`PtfxHeader` - `472` Bytes)](#81-binary-layout-ptfxheader---472-bytes)
    - [Parameter Descriptor (`PtfxParamDef` - `32` Bytes)](#82-parameter-descriptor-ptfxparamdef---32-bytes)
 9. [Firmware Architecture, Memory Layout & Cache Coherency](#9-firmware-architecture-memory-layout--cache-coherency)
    - [End-to-End Architecture](#91-end-to-end-architecture)
    - [Platform Resource & Memory Allocation](#92-platform-resource--memory-allocation)
    - [Cortex-M7 L1 Cache Coherency & FatFs Loading (`PLATFORM_IMX`)](#93-cortex-m7-l1-cache-coherency--fatfs-loading-platform_imx)
    - [Sample Editor Buffer Lifecycle](#94-sample-editor-buffer-lifecycle)
+10. [Automatic Effect Presets (`.ptp` Files via `More` Button)](#10-automatic-effect-presets-ptp-files-via-more-button)
 
 ---
 
 ## 1. Overview & Installing `.ptfx` Plugins
 
 The **Modular Effects System (`PTFX`)** introduces dynamically loadable DSP and synthesis plugins for the Polyend Tracker family across all three hardware platforms:
+
 - **Original Polyend Tracker** - NXP Kinetis MK66 (`ARM Cortex-M4F` @ 180 MHz, mono sample engine)
 - **Polyend Tracker+** - NXP i.MX RT1051/RT1064 (`ARM Cortex-M7F` @ 600 MHz, stereo sample engine)
 - **Polyend Tracker Mini** - NXP i.MX RT1051/RT1064 (`ARM Cortex-M7F` @ 600 MHz, stereo sample engine)
 
-External `.ptfx` position-independent binary modules placed on the SD card under `/Effects/*.ptfx` are automatically discovered when entering the **Sample Editor**, appended to the built-in effect list (up to **128 custom plugins** alongside the 17 built-in effects), loaded on demand into executable RAM, auditioned via **Preview**, and applied to existing samples or used to generate new samples/wavetables onto empty or active instrument slots.
+External `.ptfx` position-independent binary modules placed anywhere under `/Effects/` on the SD card (including subfolders) are browsed on demand via the **`Load Effect...`** entry at the bottom of the **Sample Editor** effect list (powered by [`GlobalFileBrowser`](global_file_browser.md) with no fixed plugin-count cap). Once loaded into executable RAM, the active plugin stays listed right above **`Load Effect...`** while navigating the Sample Editor, and can be auditioned via **Preview** and applied to existing samples or used to generate new samples/wavetables onto empty or active instrument slots.
 
 ### Installing Plugins on Your SD Card
 Place `.ptfx` files in the `/Effects/` directory at the root of your microSD card:
@@ -53,6 +58,7 @@ SD Card Root/
     ├── add_silence.ptfx
     ├── analog_kick_gen.ptfx
     ├── chiptune_gen.ptfx
+    ├── cross_mod.ptfx
     ├── haas.ptfx
     ├── multimode_filter.ptfx
     ├── stereo_delay.ptfx
@@ -61,16 +67,17 @@ SD Card Root/
 
 ---
 
-## 2. Bundled Reference Plugins (`editor-fx-sdk/effects/`)
+## 2. Bundled Plugins (`editor-fx-sdk/effects/`)
 
-All reference plugins in [`editor-fx-sdk/effects/`](../editor-fx-sdk/effects) can be compiled locally via `make ptfx` (outputting to `editor-fx-sdk/build/Effects/*.ptfx`) or downloaded ready-to-use from the **`polyend-tracker-ce-effects`** GitHub Actions build artifact:
+All plugins in [`editor-fx-sdk/effects/`](../editor-fx-sdk/effects) can be compiled locally via `make ptfx` (outputting to `editor-fx-sdk/build/Effects/*.ptfx`) or downloaded ready-to-use from the **`polyend-tracker-ce-effects`** GitHub Actions build artifact:
 
 | Plugin Source | Display Name | Capability Flags | Scratch RAM | Parameters & Description |
 | :--- | :--- | :--- | :--- | :--- |
 | [`add_silence.c`](../editor-fx-sdk/effects/add_silence.c) | `Add Silence` | `EFFECT \| STEREO` | `0 B` | `Where` (List: `Beginning\|End`), `Length` (`10–5000 ms`, default `2500 ms`). Prepends or appends silence via `host->set_extra_samples()`. |
 | [`analog_kick_gen.c`](../editor-fx-sdk/effects/analog_kick_gen.c) | `Analog Kick Gen` | `GENERATOR` | `0 B` | `TopFreq` (`60–250 Hz`), `SubFreq` (`30–80 Hz`), `Decay` (`100–900 ms`), `Click` (`0.0–1.0`). Synthesizes analog-style kick drums onto any slot. |
 | [`chiptune_gen.c`](../editor-fx-sdk/effects/chiptune_gen.c) | `Chiptune Voice Gen` | `GENERATOR` | `0 B` | `Voice` (List: `Kick\|Snare\|HiHat\|Pulse12\|Pulse25\|Pulse50\|Triangle\|NESNoise`), `Note` (`24–84 st`), `Arp` (List), `Speed` (`10–60 Hz`), `Decay` (`30–1500 ms`), `Sweep` (`-24..+24 st`), `Crush` (List), `Length` (List: `DecayLen\|SingleCyc`). |
-| [`haas.c`](../editor-fx-sdk/effects/haas.c) | `Haas Effect` | `EFFECT \| STEREO \| IMX_ONLY` | `8,820 B` | `Delay` (`1–100 ms`, default `10 ms`), `Chan` (List: `Left\|Right`). Psychoacoustic stereo Haas widener delaying L or R channel with appended tail fade-out. |
+| [`cross_mod.c`](../editor-fx-sdk/effects/cross_mod.c) | `Sample Cross-Mod` | `EFFECT \| STEREO` | `0 B` | `Mod WAV` (File `.wav`), `Mode` (List: `Layer Mix\|Ring Mod\|FM Scrub\|Amp Follow\|Sidechain`), `Pitch` (`-24..+24 st`), `Mix` (`0–100 %`). Cross-modulates or layers the sample with a secondary `.wav` file from SD. |
+| [`haas.c`](../editor-fx-sdk/effects/haas.c) | `Haas Effect` | `EFFECT \| STEREO` | `8,820 B` | `Delay` (`1–100 ms`, default `10 ms`), `Chan` (List: `Left\|Right`). Psychoacoustic stereo Haas widener delaying L or R channel with appended tail fade-out. |
 | [`multimode_filter.c`](../editor-fx-sdk/effects/multimode_filter.c) | `Multi-Mode Filter` | `EFFECT \| STEREO` | `0 B` | `Mode` (List: `LPF 24dB\|LPF 12dB\|BPF 12dB\|HPF 12dB\|Notch\|Peak`), `Cutoff` (`40–16000 Hz`), `Reso` (`0–95 %`), `Drive` (List: `Clean\|SoftSat\|WarmTube\|HardClip\|Foldback`). Zero-delay feedback Cytomic SVF filter. |
 | [`stereo_delay.c`](../editor-fx-sdk/effects/stereo_delay.c) | `Stereo Delay` | `EFFECT \| STEREO` | `176,404 B` | `Time` (`10–1000 ms`), `Fdbk` (`0–95 %`), `Mix` (`0–100 %`), `Tail` (List: `Ring Out\|Cut Off`). Stereo delay line with optional tail ring-out. |
 | [`stereo_to_mono.c`](../editor-fx-sdk/effects/stereo_to_mono.c) | `Stereo to Mono` | `STEREO \| CONVERT_TO_MONO` | `0 B` | `Source` (List: `Merge L+R\|Left Only\|Right Only\|Side L-R`), `Gain` (`-12.0 to +6.0 dB`). Converts a stereo sample on Tracker+ / Mini into a true mono sample, reclaiming 50% sample RAM. |
@@ -187,7 +194,7 @@ int32_t plugin_process_block(const int16_t** in, int16_t** out, uint32_t samples
 | :--- | :--- | :--- |
 | `// PTFX_NAME:` | 31 ASCII chars | Display name shown in the Sample Editor effect list and title bar. |
 | `// PTFX_FLAGS:` | Comma/pipe list | Combination of `EFFECT`, `GENERATOR`, `STEREO`, `WAVETABLE`, `CONVERT_TO_MONO`, `IMX_ONLY`. |
-| `// PTFX_SCRATCH:` | Up to `640 KB` (`655,360 B`) | Working scratch RAM size in bytes requested by the plugin (pre-zeroed before `plugin_init`). |
+| `// PTFX_SCRATCH:` | Up to `384 KB` (`393,216 B`) | Working scratch RAM size in bytes requested by the plugin (pre-zeroed `[128 KB .. 512 KB]` region before `plugin_init`). |
 | `// PTFX_AUTHOR:` | 15 ASCII chars | Optional author handle or credit stored in the header. |
 
 ### Capability Flags (`PtfxFlags`)
@@ -241,6 +248,20 @@ PTFX_PARAM_LIST(label, default_index, "Option 0|Option 1|Option 2|...")
 - **`options`**: Pipe-separated (`|`) string options (up to **16 options** per list parameter, max **10 characters** per option label to fit cleanly inside the 100 px column width).
 - Inside `plugin_set_param(uint8_t index, float value)`, `value` is the zero-based option index (`0.0f`, `1.0f`, `2.0f`, ...). Convert it to an integer index with `(uint8_t)(value + 0.5f)`.
 
+### 4. File Picker & Save-File Parameters (`PTFX_PARAM_FILE` / `PTFX_PARAM_SAVE_FILE`)
+Allow a `.ptfx` plugin to select an input file (secondary `.wav`, impulse response `.ir`, lookup table `.bin`, etc.) or pick an output destination path directly through `GlobalFileBrowser`:
+```c
+PTFX_PARAM_FILE("Carrier", ".wav"),
+PTFX_PARAM_FILE("IR File", ".ir"),
+PTFX_PARAM_SAVE_FILE("Export", ".dat")
+```
+- **Extension filter (`ext`)**: Up to **5 characters** stored in `PtfxParamDef.unit[6]` (e.g. `".wav"`, `".ir"`, `".bin"`).
+- **Automatic browser routing**:
+  - `".wav"` or `""` opens `GlobalFileBrowser` in `kLoadWav` (starting in `/Samples`) for `PTFX_PARAM_FILE`, or `kSaveWav` for `PTFX_PARAM_SAVE_FILE`. For `PTFX_PARAM_FILE`, the firmware automatically decodes mono/stereo 8/16/24/32-bit PCM and 32-bit float `.wav` files into the `232 KB` secondary sample buffer (`[512 KB .. 744 KB]`).
+  - Any other extension (for example `".ir"` or `".bin"`) opens `kLoadGenericFile` or `kSaveGenericFile` filtered to that extension.
+- **UI display & controls**: The bottom button displays `"Select..."` (`PARAM_FILE`) or `"Save..."` (`PARAM_SAVE_FILE`), and once a file is chosen, its filename is rendered vertically inside the parameter column above the button (with no slider bar). A single press on the parameter's screen button (or `Insert` when selected) opens `GlobalFileBrowser` without disturbing the plugin's scratch or secondary sample buffers (`[0 .. 744 KB]`), and pressing `Delete` clears the selected file path.
+- **Notification inside the plugin**: When the user confirms a file, the firmware stores the selected path per parameter index (`0..11`), restores the effect UI, sets the parameter's float value to `1.0f` (`0.0f` if loading a `.wav` failed), and calls `plugin_set_param(index, value)`. Query the path via `host->get_selected_file_path(index)` and read WAV frames via `host->get_secondary_sample(&frames, &channels)` or raw bytes via `host->read_file()` / `host->write_file()`.
+
 ---
 
 ## 6. Host API Reference (`PtfxHostApi`)
@@ -270,10 +291,21 @@ typedef struct {
     void* (*memset)(void*, int, size_t);
     int   (*rand)(void);
 
-    // Sample Length Extension (Prepend / Append Samples to Selection)
+    // Optional Sample Length Extension (prepend / append samples to selection)
     void  (*set_extra_samples)(uint32_t prepend_samples, uint32_t append_samples);
+    // File I/O & Secondary Sample Access (for convolution, vocoder, morphing, presets)
+    int32_t        (*read_file)(const char* path, void* buffer, uint32_t max_bytes);
+    int32_t        (*write_file)(const char* path, const void* buffer, uint32_t num_bytes);
+    const int16_t* (*get_secondary_sample)(uint32_t* out_frames, uint8_t* out_channels);
+    const char*    (*get_selected_file_path)(uint8_t param_index);
 } PtfxHostApi;
 ```
+
+#### File I/O & Secondary Sample Callbacks
+* **`read_file(path, buffer, max_bytes)`**: Opens an SD file via FatFs in chunked `256`-byte reads (`<= max_bytes`), closes the handle, and returns total bytes read (or `-1` on error). Never call from real-time playback interrupts — call inside `plugin_init()` or `plugin_set_param()`.
+* **`write_file(path, buffer, num_bytes)`**: Overwrites or creates an SD file in `256`-byte chunks, closes the handle, and returns total bytes written (or `-1` on error).
+* **`get_secondary_sample(&out_frames, &out_channels)`**: Returns a pointer to the pre-decoded interleaved 16-bit PCM WAV data residing in `[512 KB .. 744 KB]` (`232 KB` capacity, ~`118k` total `int16_t` samples, supporting mono/stereo 8/16/24/32-bit PCM and 32-bit float sources). Sets `*out_frames` and `*out_channels` (`1` or `2`; returns `NULL` when empty). Index stereo samples as `sec[frame * channels + ch]`.
+* **`get_selected_file_path(param_index)`**: Returns the null-terminated SD path currently assigned to parameter `param_index` (`0..11`), or `""` if none is selected. Path strings persist across parameter edits, browser round-trips, and preset loads until cleared or changed.
 
 ### Helper Macro: 16-Bit Signed Saturation (`SATURATE_16BIT`)
 [`editor-fx-sdk/tracker_plugin.h`](../editor-fx-sdk/tracker_plugin.h) provides `SATURATE_16BIT(x)`, which compiles to a single-cycle hardware `SSAT` instruction on ARM Cortex-M4/M7:
@@ -288,8 +320,9 @@ out[ch][i] = (int16_t)SATURATE_16BIT(sample32);
 
 ### 7.1 Lifecycle Order
 1. **Plugin Selection**: When the user highlights your plugin in the Sample Editor list, the firmware loads the `.ptfx` binary, zeroes `scratch_mem`, calls `plugin_init()`, and calls `plugin_set_param()` for each parameter with its `default_val`.
-2. **Parameter Adjustment**: Turning the encoder or changing a list item calls `plugin_set_param(index, new_value)`.
-3. **Preview / Apply (`startProcess`)**: When the user presses **Preview** or **Apply**, the firmware zeroes `scratch_mem`, calls `plugin_init()` to reset DSP state, and immediately replays `plugin_set_param(i, current_value)` for all parameters before calling `plugin_process_block()` in chunks of up to `8192` samples.
+2. **Parameter Adjustment & File Selection**: Turning the encoder or changing a list item calls `plugin_set_param(index, new_value)`. Activating a `PTFX_PARAM_FILE` / `PTFX_PARAM_SAVE_FILE` parameter opens `GlobalFileBrowser`, stores the confirmed path (and pre-decodes `.wav` inputs into `[512 KB .. 744 KB]`), re-runs `plugin_init()`, replays parameters, and invokes `plugin_set_param(index, 1.0f)` (`0.0f` if WAV decode failed).
+3. **Preview / Apply (`startProcess`)**: When the user presses **Preview** or **Apply**, the firmware zeroes `scratch_mem` (`[128 KB .. 512 KB]`, leaving any secondary WAV sample in `[512 KB .. 744 KB]` and selected paths intact), calls `plugin_init()` to reset DSP state, and immediately replays `plugin_set_param(i, current_value)` for all parameters before calling `plugin_process_block()` in chunks of up to `8192` samples.
+4. **Unload (`unloadPlugin`)**: Switching to another effect detaches the firmware's plugin function pointers and clears cached paths/secondary WAV state (there is no `plugin_deinit()` callback; plugins do not dynamically allocate heap memory).
 
 > [!TIP]
 > Because `plugin_init()` is called at the start of every render pass followed by `plugin_set_param()` for every parameter, reset your DSP state in `plugin_init()` and compute derived coefficients (or call `host->set_extra_samples()`) inside `plugin_set_param()`.
@@ -335,7 +368,7 @@ Generators synthesize audio from scratch (`in` is `NULL`) and can run even when 
 - See [`editor-fx-sdk/effects/analog_kick_gen.c`](../editor-fx-sdk/effects/analog_kick_gen.c) and [`editor-fx-sdk/effects/chiptune_gen.c`](../editor-fx-sdk/effects/chiptune_gen.c).
 
 ### 7.5 Pattern D: Using Working Scratch RAM (`PTFX_SCRATCH`)
-Because plugin `.bss` shares the executable code buffer (`32 KB` limit on Original Tracker, `128 KB` on Tracker+ / Tracker Mini), never declare large arrays as `static` global variables. Instead:
+Because plugin `.bss` shares the executable code buffer (`PtfxLoader::getMaxCodeSize()` — see [`docs/memory_map.md`](memory_map.md#3-shared-768-kb-scratch-buffer-map-externalramscratchbuff) for platform code and `scratch_mem` limits), never declare large arrays as `static` global variables. Instead:
 1. Request scratch memory via `// PTFX_SCRATCH: <bytes>`.
 2. Cast `scratch_mem` to your state struct inside `plugin_init()`:
 ```c
@@ -355,6 +388,63 @@ void plugin_init(void* scratch_mem, uint32_t scratch_size, const PtfxHostApi* ho
     }
 }
 ```
+
+### 7.6 Pattern E: Loading Secondary WAV Audio & Data Files (`PTFX_PARAM_FILE`)
+Use `PTFX_PARAM_FILE(label, ext)` to let the user browse an impulse response, carrier/sidechain `.wav`, or lookup table:
+
+1. **Secondary `.wav` input (`ext = ".wav"` or `""`)**: The firmware decodes the `.wav` into the dedicated `232 KB` buffer at `[512 KB .. 744 KB]` (up to ~`118k` interleaved `int16_t` samples) so it never consumes your `384 KB` working scratch buffer:
+```c
+const PluginParam PLUGIN_PARAMS[] = {
+    PTFX_PARAM_FILE("Sidechain", ".wav"),
+    PTFX_PARAM_FLOAT("Blend", 0.0f, 1.0f, 0.5f, 0.01f, "")
+};
+
+static const PtfxHostApi* s_host = 0;
+static const int16_t* s_sec = 0;
+static uint32_t s_sec_frames = 0;
+static uint8_t s_sec_channels = 0;
+static uint32_t s_frame_cursor = 0;
+
+void plugin_init(void* scratch_mem, uint32_t scratch_size, const PtfxHostApi* host) {
+    s_host = host;
+    s_frame_cursor = 0;
+    s_sec = (host && host->get_secondary_sample)
+        ? host->get_secondary_sample(&s_sec_frames, &s_sec_channels)
+        : 0;
+}
+// Inside plugin_process_block(): index secondary stereo/mono frames as s_sec[f * s_sec_channels + ch_idx]
+```
+
+2. **Custom binary / IR / table input (`ext = ".ir"`, `".bin"`, etc.)**: When `value > 0.5f` arrives in `plugin_set_param()`, resolve the chosen SD path with `host->get_selected_file_path(index)` and read up to your buffer capacity using `host->read_file()`:
+```c
+void plugin_set_param(uint8_t index, float value) {
+    if (index == 0 && value > 0.5f && s_host && s_host->get_selected_file_path && s_host->read_file && s_state) {
+        const char* path = s_host->get_selected_file_path(0);
+        if (path && path[0] != '\0') {
+            int32_t bytes_read = s_host->read_file(path, s_state->ir_table, sizeof(s_state->ir_table));
+            s_state->ir_samples = (bytes_read > 0) ? (uint32_t)bytes_read / sizeof(float) : 0;
+        }
+    }
+}
+```
+
+### 7.7 Pattern F: Exporting / Saving Files (`PTFX_PARAM_SAVE_FILE`)
+Use `PTFX_PARAM_SAVE_FILE(label, ext)` when an effect needs to write an analysis curve, extracted table, or exported data file back to SD via `GlobalFileBrowser` (`kSaveWav` / `kSaveGenericFile`):
+```c
+const PluginParam PLUGIN_PARAMS[] = {
+    PTFX_PARAM_SAVE_FILE("Export", ".dat")
+};
+
+void plugin_set_param(uint8_t index, float value) {
+    if (index == 0 && value > 0.5f && s_host && s_host->get_selected_file_path && s_host->write_file && s_state) {
+        const char* out_path = s_host->get_selected_file_path(0);
+        if (out_path && out_path[0] != '\0') {
+            s_host->write_file(out_path, s_state->analysis_blob, sizeof(s_state->analysis_blob));
+        }
+    }
+}
+```
+Wait for user action rather than writing every DSP tick: only perform `write_file()` inside `plugin_set_param()` when the `PARAM_SAVE_FILE` parameter is triggered or explicitly requested, never inside `plugin_process_block()`.
 
 ---
 
@@ -403,8 +493,8 @@ All `float` fields in `PtfxParamDef` are strictly 4-byte aligned so Cortex-M4/M7
 | `+0x0C` | `float` | `max_val` | Maximum knob value (`item_count - 1` for `PARAM_LIST`) |
 | `+0x10` | `float` | `default_val` | Default initial knob value / default list index |
 | `+0x14` | `float` | `step` | Value change per encoder step (`1.0f` for `PARAM_LIST`) |
-| `+0x18` | `char[6]` | `unit` | Unit suffix string (`" ms"`, `" dB"`, `" %"`), or for `PARAM_LIST`: `uint16_t list_offset` (`+0x18..+0x19`) + `uint8_t item_count` (`+0x1A`) pointing to `.ptfx_strings` in the code payload |
-| `+0x1E` | `uint8_t` | `display_type` | `'f'` (`PARAM_FLOAT`, decimal bar), `'d'` (`PARAM_INT`, integer bar), or `'l'` (`PARAM_LIST`, scrollable string list `cList`) |
+| `+0x18` | `char[6]` | `unit` | Unit suffix string (`" ms"`, `" dB"`, `" %"`), 5-char truncated file extension filter (`".wav"`, `".ir"`) for `PARAM_FILE`/`PARAM_SAVE_FILE`, or for `PARAM_LIST`: `uint16_t list_offset` (`+0x18..+0x19`) + `uint8_t item_count` (`+0x1A`) pointing to `.ptfx_strings` in the code payload |
+| `+0x1E` | `uint8_t` | `display_type` | `'f'` (`PARAM_FLOAT`), `'d'` (`PARAM_INT`), `'l'` (`PARAM_LIST`), `'w'` (`PARAM_FILE`), or `'s'` (`PARAM_SAVE_FILE`) |
 | `+0x1F` | `uint8_t` | `padding` | Struct padding to 32 bytes |
 
 ---
@@ -415,15 +505,20 @@ All `float` fields in `PtfxParamDef` are strictly 4-byte aligned so Cortex-M4/M7
 
 ```mermaid
 flowchart TD
-    subgraph Storage ["SD Card (/Effects/*.ptfx)"]
+    subgraph Storage ["SD Card (/Effects/**/*.ptfx)"]
         FX1["analog_kick_gen.ptfx (Generator)"]
         FX2["stereo_delay.ptfx (Stereo Effect)"]
         FX3["stereo_to_mono.ptfx (Stereo-to-Mono Converter)"]
     end
 
+    subgraph Browser ["GlobalFileBrowser (.ptfx Picker)"]
+        Pick["cGlobalFileBrowser (se_load_ptfx)"]
+        Desc["onDescribeItem() & onFormatItemLabel() -> PtfxLoader::readHeader()"]
+    end
+
     subgraph Manager ["PtfxManager & PtfxLoader"]
-        Scan["PtfxManager::scanEffects()"]
-        Header["PtfxLoader::readHeader() (472B aligned read)"]
+        Init["PtfxManager::initEffectList()"]
+        LoadPath["PtfxManager::loadPluginFromPath()"]
         Load["PtfxLoader::loadPlugin() (256B chunked FatFs read)"]
         Cache["PtfxLoader::syncInstructionCache() (L1 D/I-Cache & MPU)"]
     end
@@ -432,7 +527,7 @@ flowchart TD
         CodeBuf["Executable Code Buffer (.text + .rodata + .data + .bss)"]
         Scratch["Scratch RAM (Delay Lines / Filter State)"]
         HostApi["s_ptfxHostApi (Math & Memory Function Table)"]
-        Entries["s_ptfxEntries[128] (Catalog Cache: 128 Plugins)"]
+        Entry["s_activeEntry & s_activeHeader (Active Plugin)"]
     end
 
     subgraph Effector ["Effector Engine (mtEffect & mtEffectModular)"]
@@ -443,16 +538,19 @@ flowchart TD
     end
 
     subgraph UI ["Sample Editor UI (cSampleEditor)"]
-        List["Effect Selector List (17 Built-in + up to 128 PTFX)"]
+        List["Effect Selector List (17 Built-in + Active PTFX + Load Effect...)"]
         Knobs["Dynamic Parameter Screen (Up to 12 Knobs across 3 Pages)"]
         Wave["Waveform, Selection Endpoints & Preview Player"]
     end
 
-    Storage --> Scan
-    Scan --> Header
-    Header --> Entries
-    Entries --> List
-    List -->|Select Plugin| Load
+    Init --> List
+    List -->|Select Load Effect...| Pick
+    Storage --> Desc
+    Desc --> Pick
+    Pick -->|Confirm .ptfx| LoadPath
+    LoadPath --> Entry
+    LoadPath --> Load
+    Entry --> List
     Load --> CodeBuf
     Load --> Cache
     Load --> Scratch
@@ -467,20 +565,22 @@ flowchart TD
 
 ### 9.2 Platform Resource & Memory Allocation
 
+All `.ptfx` execution, working scratch, secondary `.wav` decoding, and concurrent [`GlobalFileBrowser`](global_file_browser.md) storage share non-overlapping slices of `externalRamScratchBuff` (`SHARED_SCRATCH_MEMORY_SIZE`) — see [`docs/memory_map.md`](memory_map.md#3-shared-768-kb-scratch-buffer-map-externalramscratchbuff) for the full byte-offset map and [`Section 2`](memory_map.md#2-external-sdram-pool--reclaimable-sample-ram-external_ram) for `externalRamEffectsBuff` sizing.
+
 | Resource / Limit | Original Tracker (`MK66`) | Tracker+ & Tracker Mini (`IMX`) |
 | :--- | :--- | :--- |
 | **MCU & Core** | NXP MK66FX1M0 (`Cortex-M4F` @ 180 MHz) | NXP i.MX RT1051/RT1064 (`Cortex-M7F` @ 600 MHz) |
-| **Max Discovered Plugins** | `128` `.ptfx` files in `/Effects/` | `128` `.ptfx` files in `/Effects/` |
+| **Plugin Discovery** | On-demand via `Load Effect...` (`GlobalFileBrowser` in `/Effects`, unlimited with subfolders) | On-demand via `Load Effect...` (`GlobalFileBrowser` in `/Effects`, unlimited with subfolders) |
 | **Max Parameters per Plugin** | `12` (`3` pages of `4`) | `12` (`3` pages of `4`) |
-| **Executable Code + BSS Limit** | `32,768 B` (`32 KB` at base of `externalRamScratchBuff`) | `131,072 B` (`128 KB` at base of `externalRamScratchBuff`, `0x80000000`) |
-| **Plugin Scratch Buffer (`scratch_mem`)** | `externalRamScratchBuff + 128 KB` (`[128 KB .. 768 KB]`, `655,360 B` / `640 KB`) | `externalRamScratchBuff + 128 KB` (`[128 KB .. 768 KB]`, `655,360 B` / `640 KB`) |
-| **Sample Editor Buffers (`confirmed` / `processed`)** | `externalRamEffectsBuff` (`1` channel, `2 × 1.875 MB` halves) | `externalRamEffectsBuff` (`2` channels, `4 × 1.875 MB` halves) |
+| **Executable Code + BSS Limit** | `PtfxLoader::getMaxCodeSize()` at base of `externalRamScratchBuff` — see [`memory_map.md`](memory_map.md#3-shared-768-kb-scratch-buffer-map-externalramscratchbuff) | `PtfxLoader::getMaxCodeSize()` at `0x80000000` (`externalRamScratchBuff` base) — see [`memory_map.md`](memory_map.md#3-shared-768-kb-scratch-buffer-map-externalramscratchbuff) |
+| **Plugin Scratch (`scratch_mem`) & Secondary WAV** | Capped by `PtfxLoader::getMaxScratchSize()` + `kPtfxSecondarySampleBytes` — see [`memory_map.md`](memory_map.md#3-shared-768-kb-scratch-buffer-map-externalramscratchbuff) | Capped by `PtfxLoader::getMaxScratchSize()` + `kPtfxSecondarySampleBytes` — see [`memory_map.md`](memory_map.md#3-shared-768-kb-scratch-buffer-map-externalramscratchbuff) |
+| **Sample Editor Buffers (`confirmed` / `processed`)** | `externalRamEffectsBuff` (`1` channel: `confirmed` + `processed` halves at `EDIT_BUFF_OFFSET`, `1,966,080` frames max) | `externalRamEffectsBuff` (`2` channels: `confirmed` + `processed` halves at `EDIT_BUFF_OFFSET`, `1,966,080` frames max) |
 
 > [!IMPORTANT]
-> **Two-Stage Lazy Caching & Shared Scratch Buffer (`kPtfxScratchTopOffset`)**:
-> - **Stage 1 (Catalog Cache)**: `s_ptfxEntries[128]` stores 76 bytes per plugin (`filename[42]`, `displayName[32]`, `flags`), enabling 60 FPS rotary jog-wheel scrolling across up to 128 custom plugins with zero SD card seeks during scrolling.
-> - **Stage 2 (Single-Pass Loader)**: When the user selects a modular plugin, `PtfxLoader::loadPlugin()` opens the `.ptfx` file once and reads the 472-byte `s_activeHeader` and executable code payload in the same `f_open` session.
-> - **Shared Scratch Cap (`768 KB`)**: `kPtfxScratchTopOffset = 768 * 1024` in [`core/effector/ptfx_loader.h`](../core/effector/ptfx_loader.h) caps `.ptfx` scratch usage at offset `768 KB` (`SHARED_SCRATCH_MEMORY_SIZE`) of `externalRamScratchBuff`.
+> **On-Demand `.ptfx` Loading & Non-Overlapping Scratch Partition (`externalRamScratchBuff`)**:
+> - **Zero Startup Scan & Subfolder Support**: Entering the Sample Editor does not scan `/Effects/` or cap the number of `.ptfx` plugins; selecting **`Load Effect...`** opens [`GlobalFileBrowser`](global_file_browser.md) in `/Effects` with a 472-byte `PtfxHeader` inspector (`onDescribeItem()`) and pretty `display_name` formatting in the Explorer list (`onFormatItemLabel()`). Once loaded, the active plugin (`s_activeEntry`) appears in the effect list immediately above **`Load Effect...`**.
+> - **Single-Pass Loader**: `PtfxLoader::loadPlugin()` opens the chosen `.ptfx` file once, validates the 472-byte `PtfxHeader`, and reads the executable code payload in the same `f_open` session.
+> - **Concurrent `GlobalFileBrowser` Safety**: Because `cGlobalFileBrowser` uses only the top slice of `externalRamScratchBuff` above `kPtfxSecondarySampleOffset + kPtfxSecondarySampleBytes` (see [`docs/memory_map.md`](memory_map.md#3-shared-768-kb-scratch-buffer-map-externalramscratchbuff)), opening the file browser from inside the Sample Editor or an effect parameter never overwrites active plugin code, `scratch_mem`, or loaded secondary WAV audio.
 
 ### 9.3 Cortex-M7 L1 Cache Coherency & FatFs Loading (`PLATFORM_IMX`)
 
@@ -498,3 +598,39 @@ In [`core/effector/mtEffect.cpp`](../core/effector/mtEffect.cpp):
 - Each channel has two buffer halves inside `externalRamEffectsBuff`: `confirmedBuffer` and `processedBuffer`.
 - When an effect is **Previewed** (`processSelection()`), audio is read from `confirmed[ch]` and written to `processed[ch]`.
 - When an effect is **Applied** (`mtEffect::apply()`), the `confirmed[ch]` and `processed[ch]` descriptors are **swapped** in-place and `processing.isLoadedData` is set to `true`. This allows seamless chaining of built-in effects, generators, and `.ptfx` plugins within the same Sample Editor session before saving back to `mtProject.sampleMemory`.
+
+---
+
+## 10. Automatic Effect Presets (`.ptp` Files via `More` Button)
+
+Any `.ptfx` plugin declaring at least one parameter (`num_params >= 1`) automatically gains an extra **Presets** page appended to the end of its `More` button page cycle in [`core/interface/sampleEditor/fSampleEdit.cpp`](../core/interface/sampleEditor/fSampleEdit.cpp) (`Load`, `Save`, and `Reset`) — plugin authors do not need to write any preset serialization code.
+
+### Preset Directory & Browser Integration
+* Presets are stored on the SD card under `/Effects/Presets/<SanitizedPluginName>/*.ptp`.
+* Selecting **Load** or **Save** on the Presets page opens [`GlobalFileBrowser`](global_file_browser.md) filtered to `.ptp` (`extensionFilter = ".ptp"`).
+* **Reset** restores every parameter to its descriptor's `default_val` and clears any selected file paths.
+
+### `.ptp` Binary Format (`PtfxPresetFileHeader`)
+Preset files store both numeric/list parameter values and all `PTFX_PARAM_FILE` / `PTFX_PARAM_SAVE_FILE` SD paths:
+
+```text
++-----------------------------------------------------------------------+
+| PtfxPresetFileHeader                                                  |
+|   +0x00: char     magic[4]       = "PTFP"                             |
+|   +0x04: uint16_t version        = 1                                  |
+|   +0x06: char     pluginFile[42] = Source .ptfx filename              |
+|   +0x30: uint8_t  numParams      = Active parameter count             |
+|   +0x31: uint8_t  fileMask       = Bitmask of slots holding file paths|
+|   +0x32: float    params[12]     = Saved float values per parameter   |
++-----------------------------------------------------------------------+
+| Variable-Length File Paths (for each set bit i in fileMask, 0..7/11)  |
+|   - uint16_t pathLen                                                  |
+|   - char     path[pathLen]                                            |
++-----------------------------------------------------------------------+
+```
+
+### Preset Restore Lifecycle
+When a `.ptp` preset is loaded:
+1. Firmware validates `"PTFP"` version `1`, restores all saved `params[]`, and calls `PtfxLoader::setSelectedFilePath(i, path)` for each bit set in `fileMask`.
+2. Any `.wav` `PARAM_FILE` slot is automatically pre-decoded back into the secondary WAV buffer (`PtfxLoader::loadSecondaryWavFile()`).
+3. The `.ptfx` module reloads cleanly, calls `plugin_init()`, and replays `plugin_set_param()` across all active parameters.
