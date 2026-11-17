@@ -22,6 +22,17 @@ static const PatternStepFxInfo kSongFxScenePatternStepFx = {
     1,
 };
 
+static const PatternStepFxInfo kSongFxSceneMixPatternStepFx = {
+    kSongFxSceneMixPatternStepFxId,
+    'W',
+    "Scene Mix",
+    "Scene Mix",
+    "Mix amount 0-100 for the song row FX scene.",
+    0,
+    kSongFxSceneMixMax,
+    kSongFxSceneMixMax,
+};
+
 bool songFxScenesPatternStepFxHandler(uint8_t typeId, uint8_t value)
 {
     return songFxScenes.onPatternStepFx(typeId, value);
@@ -32,28 +43,80 @@ void SongFxScenes::registerExtensions(ExtensionRegistrar& registrar)
     registrar.addPage(ScreenId::Song, this, 15);
     registrar.addSongColumn(this);
     registrar.addPatternStepFx(&kSongFxScenePatternStepFx, &songFxScenesPatternStepFxHandler);
+    registrar.addPatternStepFx(&kSongFxSceneMixPatternStepFx, &songFxScenesPatternStepFxHandler);
 }
 
-bool SongFxScenes::onPatternStepFx(uint8_t typeId, uint8_t value)
+bool SongFxScenes::armSceneFromPlayingSongRow()
 {
-    if (typeId != kSongFxScenePatternStepFxId)
+    const uint8_t slot = getSongService().playingSlot();
+    if (slot == 0xFF || slot >= SongColumn::kSongSlotCount)
     {
         return false;
     }
 
-    if (value < 1 || value > kSongFxScenesCount)
+    const uint8_t scene = sceneForSlot(slot);
+    if (scene < 1 || scene > kSongFxScenesCount)
     {
+        return false;
+    }
+
+    activeSceneIndex = static_cast<uint8_t>(scene - 1);
+    return true;
+}
+
+void SongFxScenes::reapplyEditedSceneIfLive()
+{
+    if (editingScene >= kSongFxScenesCount)
+    {
+        return;
+    }
+
+    if (activeSceneIndex == editingScene)
+    {
+        applyScene(editingScene);
+        return;
+    }
+
+    // Playing song row uses this scene but activeSceneIndex is stale / unset.
+    if (armSceneFromPlayingSongRow() && activeSceneIndex == editingScene)
+    {
+        applyActiveScene();
+    }
+}
+
+bool SongFxScenes::onPatternStepFx(uint8_t typeId, uint8_t value)
+{
+    if (typeId == kSongFxScenePatternStepFxId)
+    {
+        if (value < 1 || value > kSongFxScenesCount)
+        {
+            return true;
+        }
+
+        // Keep current mix so Mix can precede or follow scene changes.
+        activeSceneIndex = static_cast<uint8_t>(value - 1);
+        applyActiveScene();
         return true;
     }
 
-    applyScene(static_cast<uint8_t>(value - 1));
-    return true;
+    if (typeId == kSongFxSceneMixPatternStepFxId)
+    {
+        sceneMix = value > kSongFxSceneMixMax ? kSongFxSceneMixMax : value;
+        // Scene Mix always targets the FX scene on the playing song row when
+        // song mode is active; otherwise it uses the scene last set by N.
+        armSceneFromPlayingSongRow();
+        applyActiveScene();
+        return true;
+    }
+
+    return false;
 }
 
 void SongFxScenes::init(FileSystem* fileSystem)
 {
     this->fileSystem = fileSystem;
     clearBank();
+    resetRuntimeFxState();
 }
 
 void SongFxScenes::onWorkspaceClear()
@@ -122,6 +185,12 @@ void SongFxScenes::onProjectSave(const char* projectPath, const char* projectNam
     writeFile(destPath);
 }
 
+void SongFxScenes::resetRuntimeFxState()
+{
+    activeSceneIndex = kSongFxSceneNoneActive;
+    sceneMix = kSongFxSceneMixMax;
+}
+
 void SongFxScenes::clearBank()
 {
     memset(&externalRamSongFxScenesBank, 0, sizeof(externalRamSongFxScenesBank));
@@ -133,6 +202,7 @@ void SongFxScenes::clearBank()
     externalRamSongFxScenesBank.count = kSongFxScenesCount;
     editingScene = 0;
     focusedEntry = 0;
+    resetRuntimeFxState();
 }
 
 bool SongFxScenes::validateHeader() const
@@ -224,6 +294,22 @@ void SongFxScenes::assignSlot(uint8_t slot, uint8_t scene)
 
     externalRamSongFxScenesBank.songSlotScene[slot] = scene;
     saveToWorkspace();
+
+    // Playing this row: apply the new assignment immediately (same as onSlotStart).
+    if (getSongService().playingSlot() == slot)
+    {
+        if (scene == kSongFxScenesNone || scene > kSongFxScenesCount)
+        {
+            resetRuntimeFxState();
+            clearAllPerformanceFx();
+        }
+        else
+        {
+            activeSceneIndex = static_cast<uint8_t>(scene - 1);
+            sceneMix = kSongFxSceneMixMax;
+            applyActiveScene();
+        }
+    }
 }
 
 void SongFxScenes::formatCell(uint8_t slot, char* out, uint8_t outSize) const
@@ -342,6 +428,19 @@ void SongFxScenes::clearAllPerformanceFx()
     }
 }
 
+int16_t SongFxScenes::scaleFxValue(int16_t value) const
+{
+    if (sceneMix >= kSongFxSceneMixMax)
+    {
+        return value;
+    }
+    if (sceneMix == 0)
+    {
+        return 0;
+    }
+    return static_cast<int16_t>((static_cast<int32_t>(value) * sceneMix) / kSongFxSceneMixMax);
+}
+
 void SongFxScenes::applyScene(uint8_t sceneIndex)
 {
     if (sceneIndex >= kSongFxScenesCount)
@@ -349,8 +448,13 @@ void SongFxScenes::applyScene(uint8_t sceneIndex)
         return;
     }
 
-    // Replace prior row FX entirely — clear everything, then apply this scene.
+    // Replace prior row FX entirely — clear everything, then apply this scene at sceneMix.
     clearAllPerformanceFx();
+
+    if (sceneMix == 0)
+    {
+        return;
+    }
 
     PerformanceService& perf = getPerformanceService();
     const strSongFxScene& scene = externalRamSongFxScenesBank.scenes[sceneIndex];
@@ -361,8 +465,19 @@ void SongFxScenes::applyScene(uint8_t sceneIndex)
         {
             continue;
         }
-        perf.applyPerformanceFx(fxId, scene.entries[i].value);
+        // Scale each scene entry toward cleared (0). This is the song-row scene mix,
+        // not a per-step instrument FX like Volume/Filter in the pattern grid.
+        perf.applyPerformanceFx(fxId, scaleFxValue(scene.entries[i].value));
     }
+}
+
+void SongFxScenes::applyActiveScene()
+{
+    if (activeSceneIndex >= kSongFxScenesCount)
+    {
+        return;
+    }
+    applyScene(activeSceneIndex);
 }
 
 void SongFxScenes::onSlotStart(uint8_t slot)
@@ -371,10 +486,15 @@ void SongFxScenes::onSlotStart(uint8_t slot)
     if (scene == kSongFxScenesNone || scene > kSongFxScenesCount)
     {
         // Row with "-" still clears leftover FX from the previous scene.
+        resetRuntimeFxState();
         clearAllPerformanceFx();
         return;
     }
-    applyScene(static_cast<uint8_t>(scene - 1));
+
+    // Song row start always applies at full mix.
+    activeSceneIndex = static_cast<uint8_t>(scene - 1);
+    sceneMix = kSongFxSceneMixMax;
+    applyActiveScene();
 }
 
 void SongFxScenes::onShow(PageHost& host)
@@ -498,6 +618,7 @@ void SongFxScenes::onInput(PageHost& host, const InputEvent& event)
         e.fxId = 0;
         e.value = 0;
         saveToWorkspace();
+        reapplyEditedSceneIfLive();
         refreshEditorUi(host);
         break;
     }
@@ -707,6 +828,7 @@ void SongFxScenes::changeFocusedFxType(PageHost& host, int8_t delta)
     }
 
     saveToWorkspace();
+    reapplyEditedSceneIfLive();
     refreshEditorUi(host);
 }
 
@@ -724,11 +846,13 @@ void SongFxScenes::changeFocusedFxValue(PageHost& host, int8_t delta)
         e.fxId = nextFxId(0, 1);
         e.value = 0;
         saveToWorkspace();
+        reapplyEditedSceneIfLive();
         refreshEditorUi(host);
         return;
     }
 
     e.value = clampFxValue(e.fxId, static_cast<int16_t>(e.value + delta));
     saveToWorkspace();
+    reapplyEditedSceneIfLive();
     refreshEditorUi(host);
 }

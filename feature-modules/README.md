@@ -9,7 +9,7 @@ See [`docs/feature_module_sdk.md`](../docs/feature_module_sdk.md).
 | Directory | Hooks | Order |
 | :--- | :--- | ---: |
 | [`performance-fx-scenes/`](performance-fx-scenes/) | Performance page **Scenes** | 10 |
-| [`song-fx-scenes/`](song-fx-scenes/) | Song FX column + page + Step FX `N` | 15 |
+| [`song-fx-scenes/`](song-fx-scenes/) | Song FX column + page + Step FX `N` / `W` | 15 |
 | [`pattern-launch-scenes/`](pattern-launch-scenes/) | Performance page **Patterns** | 20 |
 | [`song-row-mutes/`](song-row-mutes/) | Song arrange per-row track mutes | 30 |
 | [`fx-buses/`](fx-buses/) | Master + Instrument FX Buses pages + softkeys | 40 |

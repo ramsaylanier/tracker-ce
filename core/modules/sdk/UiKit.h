@@ -40,6 +40,7 @@ class PageHost
     // Param name + value list.
     virtual void setListCount(uint8_t count) = 0;
     virtual void setListRow(uint8_t index, const char* name, const char* value) = 0;
+    // editingValue false = focus param/name column; true = focus value column.
     virtual void setListFocus(uint8_t index, bool editingValue) = 0;
 
     virtual void refresh() = 0;

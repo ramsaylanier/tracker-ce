@@ -1,13 +1,13 @@
 # Song FX Scenes
 
-Independent banks of Performance-engine FX type + value pairs. Edited from the **Song** FX page, assigned per playlist row via the Song **FX** column, and launched with Pattern Step FX `N`.
+Independent banks of Performance-engine FX type + value pairs. Edited from the **Song** FX page, assigned per playlist row via the Song **FX** column, and launched with Pattern Step FX `N`. Pattern Step FX `W` / **Scene Mix** scales how much of that song-row scene is applied.
 
 | | |
 | :--- | :--- |
 | Song column | **FX** (`-` / `1`–`8`) |
 | Editor | `ModulePage` on Song (Mini menu dots: playlist / FX) |
 | Sidecar | `songfxscenes.bin` |
-| Pattern Step FX | `N` / **FX Scene** (values 1–8) |
+| Pattern Step FX | `N` / **FX Scene** (values 1–8); `W` / **Scene Mix** (values 0–100) |
 | Performance page | none |
 
 This is **not** Performance FX Scenes (rack snapshots). It does not share `perfscenes.bin` or call `captureFxScene` / `recallFxScene`.
@@ -16,9 +16,13 @@ This is **not** Performance FX Scenes (rack snapshots). It does not share `perfs
 
 Each of 8 scenes holds up to 8 entries `{fxId, value}` chosen from the live Performance engine FX catalog (Volume, filters, sends, stutter, …).
 
-When a song playlist row starts (or Pattern Step FX `N` fires), all Performance-engine FX are cleared first, then every filled entry in the scene is applied (`applyPerformanceFx`) with **no display refresh**.
+When a song playlist row starts, mix resets to **100**, all Performance-engine FX are cleared, then every filled entry in the scene is applied (`applyPerformanceFx`) with **no display refresh**.
 
-A row with FX `-` still clears leftover FX from the previous scene. A row start and a step-1 `N` on the same moment can both fire — that is intentional.
+Pattern Step FX `N` sets the active scene and applies it at the **current** mix. Pattern Step FX `W` (**Scene Mix**) sets mix `0`–`100` and re-applies the **FX scene assigned to the currently playing song row** (falls back to the scene last chosen with `N` when not in song playback). Each scene entry is scaled by `value * mix / 100`. Mix is runtime-only (not saved in the sidecar).
+
+This is not pattern Step FX like Volume / Filter / Delay Send on a track — those edit that step’s instrument. Scene Mix only scales the song-row Song FX Scene as a whole.
+
+A row with FX `-` still clears leftover FX from the previous scene and resets mix. A row start and a step-1 `N` on the same moment can both fire — that is intentional.
 
 ## How to use it on the device
 
@@ -47,7 +51,10 @@ If the selected playlist row already has a scene assigned, that scene opens firs
 
 ### Pattern Step FX
 
-In the pattern FX picker, **FX Scene** (`N`) recalls scene 1–8 the same way as a song-row start.
+In the pattern FX picker:
+
+- **FX Scene** (`N`) recalls scene 1–8 (keeps the current mix).
+- **Scene Mix** (`W`) sets mix 0–100 for the playing song row’s FX scene. No effect if that row has `-` and no scene was set with `N`.
 
 ## On disk
 

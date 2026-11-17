@@ -1485,6 +1485,8 @@ void Sequencer::playSongFromPosition(uint8_t fromPos)
     }
 
     player.songMode = 1;
+    // Apply row FX / mutes before the first audio tick of this slot.
+    featureModules.notifySongSlotStartIfChanged(fromPos);
     play();
 }
 
@@ -1513,6 +1515,7 @@ void Sequencer::continueSong(uint8_t songPos)
     newFileManager.setSongPos(songPos);
     player.songMode = 1;
     ENABLE_GLOBAL_INTERRUPTS();
+    featureModules.notifySongSlotStartIfChanged(songPos);
 }
 
 AUDIO_CORE_RAM void Sequencer::stopAllMidiOpenNotes(void)
@@ -1968,6 +1971,12 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             reset_actual_pos();
             switchRamPatternsNow();
             patternSwitched = true;
+
+            // Apply song-row FX / mutes on the audio path before the new row's first step.
+            if (isNextPatternAvailable)
+            {
+                featureModules.notifySongSlotStartIfChanged(mtProject.song.playlistPos);
+            }
 
             if (player.performanceMode)
             {

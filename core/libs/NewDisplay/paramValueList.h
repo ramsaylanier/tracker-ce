@@ -8,6 +8,7 @@
 
 struct strParamValueList
 {
+    // Selection frame: 0 = full row, 1 = value column, 2 = param/name column.
     uint8_t valueEditActive;
     int16_t start;
     uint16_t length;

@@ -135,6 +135,15 @@ class SongServiceImpl : public SongService
 {
   public:
     uint8_t selectedSlot() const override { return songEditor.selectedSongPosition; }
+
+    uint8_t playingSlot() const override
+    {
+        if (!(sequencer.isPlay() && sequencer.isSongMode()))
+        {
+            return 0xFF;
+        }
+        return mtProject.song.playlistPos;
+    }
 };
 
 class EngineServiceImpl : public EngineService

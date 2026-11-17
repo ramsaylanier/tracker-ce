@@ -24,7 +24,9 @@ class SongColumn
     virtual void onRemoved(uint8_t index) = 0;
     virtual void clearAll() = 0;
 
-    // Main thread only. Called when song playback enters this playlist slot.
+    // Called when song playback enters this playlist slot. May run inside the
+    // audio buffer callback (same path as PatternColumn::onStep / Step FX).
+    // Keep it short: no file I/O, no PageHost calls.
     virtual void onSlotStart(uint8_t slot) = 0;
 };
 

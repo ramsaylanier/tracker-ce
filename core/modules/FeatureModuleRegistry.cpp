@@ -20,6 +20,7 @@ void FeatureModuleRegistry::clear()
 {
     moduleCount = 0;
     extensionCatalog().clear();
+    resetSongSlotStartEdgeDetect();
 }
 
 FeatureModule* FeatureModuleRegistry::get(uint8_t index) const
@@ -110,4 +111,22 @@ const PatternStepFxInfo* FeatureModuleRegistry::findPatternStepFx(uint8_t typeId
 void FeatureModuleRegistry::dispatchPatternStepFx(uint8_t typeId, uint8_t value)
 {
     extensionCatalog().dispatchPatternStepFx(typeId, value);
+}
+
+void FeatureModuleRegistry::notifySongSlotStartIfChanged(uint8_t slot)
+{
+    if (songSlotNotifyActive_ && lastNotifiedSongSlot_ == static_cast<int16_t>(slot))
+    {
+        return;
+    }
+
+    songSlotNotifyActive_ = true;
+    lastNotifiedSongSlot_ = static_cast<int16_t>(slot);
+    extensionCatalog().notifySongSlotStart(slot);
+}
+
+void FeatureModuleRegistry::resetSongSlotStartEdgeDetect()
+{
+    songSlotNotifyActive_ = false;
+    lastNotifiedSongSlot_ = -1;
 }

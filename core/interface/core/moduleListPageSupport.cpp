@@ -75,7 +75,9 @@ void ModuleListPageSupport::setListRow(uint8_t index, const char* name, const ch
 void ModuleListPageSupport::setListFocus(uint8_t index, bool editingValue)
 {
     list.start = index;
-    list.valueEditActive = editingValue ? 1 : 0;
+    // PageHost: false = param/name column (2), true = value column (1).
+    // Full-row frame (0) is reserved for non-module hosts like Config.
+    list.valueEditActive = editingValue ? 1 : 2;
     display.setControlData(listControl, &list);
     display.setControlValue(listControl, index);
     display.setControlShow(listControl);

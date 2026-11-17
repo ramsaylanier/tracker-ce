@@ -40,6 +40,9 @@ class SongService
     virtual ~SongService() {}
 
     virtual uint8_t selectedSlot() const = 0;
+
+    // Playing playlist index while song mode is playing; 0xFF otherwise.
+    virtual uint8_t playingSlot() const = 0;
 };
 
 class EngineService

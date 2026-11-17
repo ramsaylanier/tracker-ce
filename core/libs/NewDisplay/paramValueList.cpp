@@ -230,11 +230,19 @@ void cParamValueList::update()
             // x_pos = posX+3;
             y_pos = posY + (barPos * h_row);
 
-            // ramka
-            if (list->valueEditActive)
+            // ramka (locals so text layout still uses full row width)
+            int16_t frame_x = x_pos;
+            int16_t frame_x_end = x_pos_end;
+            if (list->valueEditActive == 1)
             {
-                x_pos = x_pos_end - ((x_pos_end - x_pos) / 3);
-                // x_pos_end = w_bar/3;
+                // Value column: right third
+                frame_x = frame_x_end - ((frame_x_end - frame_x) / 3);
+                API_COLOR(display.getTheme().frameColors[0]);
+            }
+            else if (list->valueEditActive == 2)
+            {
+                // Param/name column: left two-thirds
+                frame_x_end = frame_x + ((frame_x_end - frame_x) * 2) / 3;
                 API_COLOR(display.getTheme().frameColors[0]);
             }
             else
@@ -244,11 +252,11 @@ void cParamValueList::update()
 
             API_LINE_WIDTH(kRedFrameWidth);
             API_BEGIN(LINE_STRIP);
-            API_VERTEX2F(x_pos, y_pos);
-            API_VERTEX2F(x_pos_end, y_pos);
-            API_VERTEX2F(x_pos_end, y_pos + h_row);
-            API_VERTEX2F(x_pos, y_pos + h_row);
-            API_VERTEX2F(x_pos, y_pos);
+            API_VERTEX2F(frame_x, y_pos);
+            API_VERTEX2F(frame_x_end, y_pos);
+            API_VERTEX2F(frame_x_end, y_pos + h_row);
+            API_VERTEX2F(frame_x, y_pos + h_row);
+            API_VERTEX2F(frame_x, y_pos);
             API_END();
         }
 
@@ -362,10 +370,19 @@ void cParamValueList::update()
             y_pos = posY + (barPos * h_row) + (mode ? 0 : listAnimationStep);
             // if(list->length > list->linesCount) w_bar = width-13;
 
-            // ramka
-            if (list->valueEditActive)
+            // ramka (locals so text layout still uses full row width)
+            int16_t frame_x = x_pos;
+            int16_t frame_x_end = x_pos_end;
+            if (list->valueEditActive == 1)
             {
-                x_pos = x_pos_end - ((x_pos_end - x_pos) / 3);
+                // Value column: right third
+                frame_x = frame_x_end - ((frame_x_end - frame_x) / 3);
+                API_COLOR(display.getTheme().frameColors[0]);
+            }
+            else if (list->valueEditActive == 2)
+            {
+                // Param/name column: left two-thirds
+                frame_x_end = frame_x + ((frame_x_end - frame_x) * 2) / 3;
                 API_COLOR(display.getTheme().frameColors[0]);
             }
             else
@@ -375,11 +392,11 @@ void cParamValueList::update()
 
             API_LINE_WIDTH(kRedFrameWidth);
             API_BEGIN(LINE_STRIP);
-            API_VERTEX2F(x_pos, y_pos);
-            API_VERTEX2F(x_pos_end, y_pos);
-            API_VERTEX2F(x_pos_end, y_pos + h_row);
-            API_VERTEX2F(x_pos, y_pos + h_row);
-            API_VERTEX2F(x_pos, y_pos);
+            API_VERTEX2F(frame_x, y_pos);
+            API_VERTEX2F(frame_x_end, y_pos);
+            API_VERTEX2F(frame_x_end, y_pos + h_row);
+            API_VERTEX2F(frame_x, y_pos + h_row);
+            API_VERTEX2F(frame_x, y_pos);
             API_END();
         }
 

@@ -32,11 +32,20 @@ class FeatureModuleRegistry
     const PatternStepFxInfo* findPatternStepFx(uint8_t typeId) const;
     void dispatchPatternStepFx(uint8_t typeId, uint8_t value);
 
+    // Song slot start → ModuleEventListener::onSongSlotStart + SongColumn::onSlotStart.
+    // Edge-detect so audio-path and main-loop callers do not double-fire the same slot.
+    // May run inside the audio callback — handlers must stay short (no I/O / PageHost).
+    void notifySongSlotStartIfChanged(uint8_t slot);
+    void resetSongSlotStartEdgeDetect();
+
   private:
     void registerAllExtensions();
 
     FeatureModule* modules[kMaxModules] = {};
     uint8_t moduleCount = 0;
+
+    bool songSlotNotifyActive_ = false;
+    int16_t lastNotifiedSongSlot_ = -1;
 };
 
 void registerFeatureModules(FeatureModuleRegistry& registry);

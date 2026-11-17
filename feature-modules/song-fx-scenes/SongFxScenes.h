@@ -13,6 +13,9 @@ static constexpr uint8_t kSongFxScenesNone = 0;
 static constexpr uint16_t kSongFxScenesFileVersion = 1;
 static constexpr uint8_t kSongFxSceneNameLength = 16;
 static constexpr uint8_t kSongFxScenePatternStepFxId = kPatternStepFxModuleIdBase;
+static constexpr uint8_t kSongFxSceneMixPatternStepFxId = kPatternStepFxModuleIdBase + 1;
+static constexpr uint8_t kSongFxSceneMixMax = 100;
+static constexpr uint8_t kSongFxSceneNoneActive = 0xFF;
 
 struct strSongFxEntry
 {
@@ -87,7 +90,14 @@ class SongFxScenes : public FeatureModule, public ModulePage, public SongColumn
     void assignSlot(uint8_t slot, uint8_t scene);
     uint8_t sceneForSlot(uint8_t slot) const;
     void clearAllPerformanceFx();
-    void applyScene(uint8_t sceneIndex); // 0..7 — clears all FX, then applies scene
+    void applyScene(uint8_t sceneIndex); // 0..7 — clears all FX, then applies scene at sceneMix
+    void applyActiveScene();
+    // Prefer the FX scene assigned to the playing song row; else keep activeSceneIndex.
+    bool armSceneFromPlayingSongRow();
+    // Push editor edits to the Performance rack when that scene is currently live.
+    void reapplyEditedSceneIfLive();
+    void resetRuntimeFxState();
+    int16_t scaleFxValue(int16_t value) const;
     void refreshEditorUi(PageHost& host);
     void formatEntryName(uint8_t entry, char* out, uint8_t outSize) const;
     void formatEntryValue(uint8_t entry, char* out, uint8_t outSize) const;
@@ -102,6 +112,8 @@ class SongFxScenes : public FeatureModule, public ModulePage, public SongColumn
     uint8_t editingScene = 0; // 0..7 while editor open
     uint8_t focusedEntry = 0;
     uint8_t focusedField = 0; // 0 = FX type, 1 = value
+    uint8_t activeSceneIndex = kSongFxSceneNoneActive; // 0..7, or none
+    uint8_t sceneMix = kSongFxSceneMixMax;             // 0..100 runtime only
 };
 
 extern SongFxScenes songFxScenes;

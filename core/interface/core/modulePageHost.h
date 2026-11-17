@@ -124,7 +124,8 @@ void notifySongPlaylistReplaced();
 void notifySongInserted(uint8_t index, bool duplicate);
 void notifySongRemoved(uint8_t index);
 
-// Main-thread song playback edge detect → SongColumn::onSlotStart / listeners.
+// Main-thread fallback for song slot start (shared edge-detect with audio-path notifies).
+// Primary notify runs from the sequencer when playlistPos advances / song play starts.
 void notifySongPlaybackTick();
 
 #endif /* INTERFACE_CORE_MODULEPAGEHOST_H_ */

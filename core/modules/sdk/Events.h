@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 
-// Main-thread listeners for firmware events modules care about.
+// Firmware event listeners for feature modules.
+// onSongSlotStart may run inside the audio buffer callback — keep it short
+// (no file I/O, no PageHost). Other hooks are main-thread.
 class ModuleEventListener
 {
   public:

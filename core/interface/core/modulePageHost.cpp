@@ -1,5 +1,6 @@
 #include "modulePageHost.h"
 
+#include "FeatureModuleRegistry.h"
 #include "core/interfaceDefs.h"
 #include "display.h"
 #include "mtSequencer.h"
@@ -318,22 +319,14 @@ void notifySongRemoved(uint8_t index)
 
 void notifySongPlaybackTick()
 {
-    static bool wasPlayingSong = false;
-    static int16_t lastRecalledSongSlot = -1;
-
     const bool playingSong = sequencer.isPlay() && sequencer.isSongMode();
     if (playingSong)
     {
-        const uint8_t songSlot = mtProject.song.playlistPos;
-        if (!wasPlayingSong || lastRecalledSongSlot != static_cast<int16_t>(songSlot))
-        {
-            lastRecalledSongSlot = songSlot;
-            extensionCatalog().notifySongSlotStart(songSlot);
-        }
-        wasPlayingSong = true;
+        // Fallback for slot jumps that did not go through the sequencer audio path.
+        // Edge-detect is shared with FeatureModuleRegistry so audio-path notifies are not repeated.
+        featureModules.notifySongSlotStartIfChanged(mtProject.song.playlistPos);
         return;
     }
 
-    wasPlayingSong = false;
-    lastRecalledSongSlot = -1;
+    featureModules.resetSongSlotStartEdgeDetect();
 }
